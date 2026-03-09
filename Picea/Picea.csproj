@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <PackageId>Picea</PackageId>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- NuGet metadata -->
+    <Authors>Maurice Peters</Authors>
+    <Description>A minimal, production-hardened Mealy machine kernel for building event-driven systems. The foundational abstraction underlying MVU, Event Sourcing, and the Actor Model.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/picea/picea</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/picea/picea.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>state-machine;mealy-machine;automaton;mvu;event-sourcing;actor-model;functional;kernel</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReleaseNotes>https://github.com/picea/picea/releases</PackageReleaseNotes>
+    <Copyright>Copyright 2025 Maurice Peters</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Picea.Tests" />
+    <InternalsVisibleTo Include="Picea.Benchmarks" />
+  </ItemGroup>
+</Project>
