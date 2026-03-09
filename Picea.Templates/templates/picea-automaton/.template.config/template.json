@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Maurice Peters",
+  "classifications": [
+    "Console",
+    "Picea",
+    "Automaton",
+    "State Machine"
+  ],
+  "identity": "Picea.Automaton.CSharp",
+  "name": "Picea Automaton",
+  "shortName": "picea-automaton",
+  "description": "A project template for building a Mealy machine automaton with the Picea kernel.",
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "sourceName": "PiceaAutomaton",
+  "preferNameDirectory": true,
+  "symbols": {
+    "Framework": {
+      "type": "parameter",
+      "description": "The target framework for the project.",
+      "datatype": "choice",
+      "choices": [
+        {
+          "choice": "net10.0",
+          "description": "Target .NET 10.0"
+        }
+      ],
+      "replaces": "net10.0",
+      "defaultValue": "net10.0"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageType>Template</PackageType>
+    <PackageId>Picea.Templates</PackageId>
+    <Title>Picea Project Templates</Title>
+    <Description>Templates for creating Picea Automaton projects</Description>
+    <Authors>Maurice Peters</Authors>
+    <PackageTags>dotnet-new;templates;picea;automaton;mealy-machine;state-machine</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/picea/picea</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/picea/picea</RepositoryUrl>
+    <TargetFramework>net10.0</TargetFramework>
+    <IncludeContentInPack>true</IncludeContentInPack>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <ContentTargetFolders>content</ContentTargetFolders>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+    <NoDefaultExcludes>true</NoDefaultExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="templates/**/*" Exclude="templates/**/bin/**;templates/**/obj/**" />
+    <Compile Remove="**/*" />
+  </ItemGroup>
+
+</Project>
