@@ -52,7 +52,9 @@ jobs:
 
       - name: Pack
         if: github.event_name != 'pull_request'
-        run: dotnet pack ./Picea/Picea.csproj --configuration Release --output ./nupkg
+        run: |
+          dotnet pack ./Picea/Picea.csproj --configuration Release --output ./nupkg
+          dotnet pack ./Picea.Templates/Picea.Templates.csproj --configuration Release --output ./nupkg
 
       - name: Publish to NuGet
         if: github.event_name != 'pull_request'
