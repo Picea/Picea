@@ -571,4 +571,497 @@ public class RuntimeTests
         await runtime.Dispatch(new ThermostatEvent.TemperatureRecorded(18m));
         Assert.Equal(18m, runtime.State.CurrentTemp);
     }
+
+    // =========================================================================
+    // Observer Combinators — Where
+    // =========================================================================
+
+    [Fact]
+    public async Task ObserverWhere_PredicateTrue_InvokesObserver()
+    {
+        var called = false;
+
+        Observer<ThermostatState, ThermostatEvent, ThermostatEffect> inner = (_, _, _) =>
+        {
+            called = true;
+            return PipelineResult.Ok;
+        };
+
+        var filtered = inner.Where((_, evt, _) => evt is ThermostatEvent.TemperatureRecorded);
+
+        var state = new ThermostatState(20m, 22m, false, true);
+        var result = await filtered(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
+
+        Assert.True(called);
+        Assert.True(result.IsOk);
+    }
+
+    [Fact]
+    public async Task ObserverWhere_PredicateFalse_SkipsObserver()
+    {
+        var called = false;
+
+        Observer<ThermostatState, ThermostatEvent, ThermostatEffect> inner = (_, _, _) =>
+        {
+            called = true;
+            return PipelineResult.Ok;
+        };
+
+        var filtered = inner.Where((_, evt, _) => evt is ThermostatEvent.HeaterTurnedOn);
+
+        var state = new ThermostatState(20m, 22m, false, true);
+        var result = await filtered(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
+
+        Assert.False(called);
+        Assert.True(result.IsOk);
+    }
+
+    // =========================================================================
+    // Observer Combinators — Select
+    // =========================================================================
+
+    [Fact]
+    public async Task ObserverSelect_ProjectsArguments()
+    {
+        ThermostatState? receivedState = null;
+
+        Observer<ThermostatState, ThermostatEvent, ThermostatEffect> inner = (s, _, _) =>
+        {
+            receivedState = s;
+            return PipelineResult.Ok;
+        };
+
+        // Select projects from (string, int, bool) → (ThermostatState, ThermostatEvent, ThermostatEffect)
+        var projected = inner.Select<ThermostatState, ThermostatEvent, ThermostatEffect, string, int, bool>(
+            (_, _, _) => (
+                new ThermostatState(99m, 99m, true, true),
+                new ThermostatEvent.HeaterTurnedOn(),
+                new ThermostatEffect.None()));
+
+        var result = await projected("hello", 42, true);
+
+        Assert.NotNull(receivedState);
+        Assert.Equal(99m, receivedState.CurrentTemp);
+        Assert.True(result.IsOk);
+    }
+
+    // =========================================================================
+    // Observer Combinators — Catch
+    // =========================================================================
+
+    [Fact]
+    public async Task ObserverCatch_OnSuccess_PassesThrough()
+    {
+        var catchCalled = false;
+
+        Observer<ThermostatState, ThermostatEvent, ThermostatEffect> inner = (_, _, _) =>
+            PipelineResult.Ok;
+
+        var caught = inner.Catch(_ =>
+        {
+            catchCalled = true;
+            return Result<Unit, PipelineError>.Ok(Unit.Value);
+        });
+
+        var state = new ThermostatState(20m, 22m, false, true);
+        var result = await caught(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
+
+        Assert.False(catchCalled);
+        Assert.True(result.IsOk);
+    }
+
+    [Fact]
+    public async Task ObserverCatch_OnError_InvokesHandler()
+    {
+        var pipelineError = new PipelineError("test error", "TestSource");
+
+        Observer<ThermostatState, ThermostatEvent, ThermostatEffect> inner = (_, _, _) =>
+            new ValueTask<Result<Unit, PipelineError>>(
+                Result<Unit, PipelineError>.Err(pipelineError));
+
+        PipelineError? capturedError = null;
+        var caught = inner.Catch(err =>
+        {
+            capturedError = err;
+            return Result<Unit, PipelineError>.Ok(Unit.Value); // recover
+        });
+
+        var state = new ThermostatState(20m, 22m, false, true);
+        var result = await caught(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
+
+        Assert.NotNull(capturedError);
+        Assert.Equal("test error", capturedError.Value.Message);
+        Assert.True(result.IsOk);
+    }
+
+    [Fact]
+    public async Task ObserverCatch_HandlerCanReError()
+    {
+        var originalError = new PipelineError("original");
+        var replacementError = new PipelineError("replaced", "Recovery");
+
+        Observer<ThermostatState, ThermostatEvent, ThermostatEffect> inner = (_, _, _) =>
+            new ValueTask<Result<Unit, PipelineError>>(
+                Result<Unit, PipelineError>.Err(originalError));
+
+        var caught = inner.Catch(_ =>
+            Result<Unit, PipelineError>.Err(replacementError));
+
+        var state = new ThermostatState(20m, 22m, false, true);
+        var result = await caught(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
+
+        Assert.True(result.IsErr);
+        Assert.Equal("replaced", result.Error.Message);
+    }
+
+    // =========================================================================
+    // Observer Combinators — Combine
+    // =========================================================================
+
+    [Fact]
+    public async Task ObserverCombine_BothSucceed_ReturnsOk()
+    {
+        var firstCalled = false;
+        var secondCalled = false;
+
+        Observer<ThermostatState, ThermostatEvent, ThermostatEffect> first = (_, _, _) =>
+        {
+            firstCalled = true;
+            return PipelineResult.Ok;
+        };
+
+        Observer<ThermostatState, ThermostatEvent, ThermostatEffect> second = (_, _, _) =>
+        {
+            secondCalled = true;
+            return PipelineResult.Ok;
+        };
+
+        var combined = first.Combine(second);
+
+        var state = new ThermostatState(20m, 22m, false, true);
+        var result = await combined(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
+
+        Assert.True(firstCalled);
+        Assert.True(secondCalled);
+        Assert.True(result.IsOk);
+    }
+
+    [Fact]
+    public async Task ObserverCombine_FirstFails_SecondStillRuns()
+    {
+        var secondCalled = false;
+        var error = new PipelineError("first failed");
+
+        Observer<ThermostatState, ThermostatEvent, ThermostatEffect> first = (_, _, _) =>
+            new ValueTask<Result<Unit, PipelineError>>(
+                Result<Unit, PipelineError>.Err(error));
+
+        Observer<ThermostatState, ThermostatEvent, ThermostatEffect> second = (_, _, _) =>
+        {
+            secondCalled = true;
+            return PipelineResult.Ok;
+        };
+
+        var combined = first.Combine(second);
+
+        var state = new ThermostatState(20m, 22m, false, true);
+        var result = await combined(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
+
+        Assert.True(secondCalled, "second observer should still run when first fails");
+        Assert.True(result.IsErr);
+        Assert.Equal("first failed", result.Error.Message);
+    }
+
+    [Fact]
+    public async Task ObserverCombine_SecondFails_ReturnsSecondError()
+    {
+        var error = new PipelineError("second failed");
+
+        Observer<ThermostatState, ThermostatEvent, ThermostatEffect> first = (_, _, _) =>
+            PipelineResult.Ok;
+
+        Observer<ThermostatState, ThermostatEvent, ThermostatEffect> second = (_, _, _) =>
+            new ValueTask<Result<Unit, PipelineError>>(
+                Result<Unit, PipelineError>.Err(error));
+
+        var combined = first.Combine(second);
+
+        var state = new ThermostatState(20m, 22m, false, true);
+        var result = await combined(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
+
+        Assert.True(result.IsErr);
+        Assert.Equal("second failed", result.Error.Message);
+    }
+
+    [Fact]
+    public async Task ObserverCombine_BothFail_ReturnsFirstError()
+    {
+        var error1 = new PipelineError("first");
+        var error2 = new PipelineError("second");
+
+        Observer<ThermostatState, ThermostatEvent, ThermostatEffect> first = (_, _, _) =>
+            new ValueTask<Result<Unit, PipelineError>>(
+                Result<Unit, PipelineError>.Err(error1));
+
+        Observer<ThermostatState, ThermostatEvent, ThermostatEffect> second = (_, _, _) =>
+            new ValueTask<Result<Unit, PipelineError>>(
+                Result<Unit, PipelineError>.Err(error2));
+
+        var combined = first.Combine(second);
+
+        var state = new ThermostatState(20m, 22m, false, true);
+        var result = await combined(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
+
+        Assert.True(result.IsErr);
+        Assert.Equal("first", result.Error.Message);
+    }
+
+    // =========================================================================
+    // Observer Combinators — Then (error short-circuit)
+    // =========================================================================
+
+    [Fact]
+    public async Task ObserverThen_FirstFails_SecondNotCalled()
+    {
+        var secondCalled = false;
+        var error = new PipelineError("first failed");
+
+        Observer<ThermostatState, ThermostatEvent, ThermostatEffect> first = (_, _, _) =>
+            new ValueTask<Result<Unit, PipelineError>>(
+                Result<Unit, PipelineError>.Err(error));
+
+        Observer<ThermostatState, ThermostatEvent, ThermostatEffect> second = (_, _, _) =>
+        {
+            secondCalled = true;
+            return PipelineResult.Ok;
+        };
+
+        var chained = first.Then(second);
+
+        var state = new ThermostatState(20m, 22m, false, true);
+        var result = await chained(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
+
+        Assert.False(secondCalled, "second observer should not run when first fails (Then short-circuits)");
+        Assert.True(result.IsErr);
+        Assert.Equal("first failed", result.Error.Message);
+    }
+
+    // =========================================================================
+    // Interpreter Combinators — Then
+    // =========================================================================
+
+    [Fact]
+    public async Task InterpreterThen_ConcatenatesEvents()
+    {
+        Interpreter<ThermostatEffect, ThermostatEvent> first = _ =>
+            new ValueTask<Result<ThermostatEvent[], PipelineError>>(
+                Result<ThermostatEvent[], PipelineError>.Ok(
+                    [new ThermostatEvent.TemperatureRecorded(18m)]));
+
+        Interpreter<ThermostatEffect, ThermostatEvent> second = _ =>
+            new ValueTask<Result<ThermostatEvent[], PipelineError>>(
+                Result<ThermostatEvent[], PipelineError>.Ok(
+                    [new ThermostatEvent.HeaterTurnedOn()]));
+
+        var chained = first.Then(second);
+
+        var result = await chained(new ThermostatEffect.None());
+
+        Assert.True(result.IsOk);
+        Assert.Equal(2, result.Value.Length);
+        Assert.IsType<ThermostatEvent.TemperatureRecorded>(result.Value[0]);
+        Assert.IsType<ThermostatEvent.HeaterTurnedOn>(result.Value[1]);
+    }
+
+    [Fact]
+    public async Task InterpreterThen_FirstFails_ShortCircuits()
+    {
+        var secondCalled = false;
+        var error = new PipelineError("interpreter failed");
+
+        Interpreter<ThermostatEffect, ThermostatEvent> first = _ =>
+            new ValueTask<Result<ThermostatEvent[], PipelineError>>(
+                Result<ThermostatEvent[], PipelineError>.Err(error));
+
+        Interpreter<ThermostatEffect, ThermostatEvent> second = _ =>
+        {
+            secondCalled = true;
+            return new ValueTask<Result<ThermostatEvent[], PipelineError>>(
+                Result<ThermostatEvent[], PipelineError>.Ok([]));
+        };
+
+        var chained = first.Then(second);
+
+        var result = await chained(new ThermostatEffect.None());
+
+        Assert.False(secondCalled);
+        Assert.True(result.IsErr);
+        Assert.Equal("interpreter failed", result.Error.Message);
+    }
+
+    [Fact]
+    public async Task InterpreterThen_BothEmpty_ReturnsEmptyArray()
+    {
+        Interpreter<ThermostatEffect, ThermostatEvent> first = _ =>
+            new ValueTask<Result<ThermostatEvent[], PipelineError>>(
+                Result<ThermostatEvent[], PipelineError>.Ok([]));
+
+        Interpreter<ThermostatEffect, ThermostatEvent> second = _ =>
+            new ValueTask<Result<ThermostatEvent[], PipelineError>>(
+                Result<ThermostatEvent[], PipelineError>.Ok([]));
+
+        var chained = first.Then(second);
+
+        var result = await chained(new ThermostatEffect.None());
+
+        Assert.True(result.IsOk);
+        Assert.Empty(result.Value);
+    }
+
+    // =========================================================================
+    // Interpreter Combinators — Where
+    // =========================================================================
+
+    [Fact]
+    public async Task InterpreterWhere_PredicateTrue_InvokesInterpreter()
+    {
+        var called = false;
+
+        Interpreter<ThermostatEffect, ThermostatEvent> inner = _ =>
+        {
+            called = true;
+            return new ValueTask<Result<ThermostatEvent[], PipelineError>>(
+                Result<ThermostatEvent[], PipelineError>.Ok(
+                    [new ThermostatEvent.HeaterTurnedOn()]));
+        };
+
+        var filtered = inner.Where(effect => effect is ThermostatEffect.ActivateHeater);
+
+        var result = await filtered(new ThermostatEffect.ActivateHeater());
+
+        Assert.True(called);
+        Assert.True(result.IsOk);
+        Assert.Single(result.Value);
+    }
+
+    [Fact]
+    public async Task InterpreterWhere_PredicateFalse_ReturnsEmptyEvents()
+    {
+        var called = false;
+
+        Interpreter<ThermostatEffect, ThermostatEvent> inner = _ =>
+        {
+            called = true;
+            return new ValueTask<Result<ThermostatEvent[], PipelineError>>(
+                Result<ThermostatEvent[], PipelineError>.Ok(
+                    [new ThermostatEvent.HeaterTurnedOn()]));
+        };
+
+        var filtered = inner.Where(effect => effect is ThermostatEffect.ActivateHeater);
+
+        var result = await filtered(new ThermostatEffect.None());
+
+        Assert.False(called);
+        Assert.True(result.IsOk);
+        Assert.Empty(result.Value);
+    }
+
+    // =========================================================================
+    // Interpreter Combinators — Select
+    // =========================================================================
+
+    [Fact]
+    public async Task InterpreterSelect_ProjectsEffect()
+    {
+        ThermostatEffect? receivedEffect = null;
+
+        Interpreter<ThermostatEffect, ThermostatEvent> inner = effect =>
+        {
+            receivedEffect = effect;
+            return new ValueTask<Result<ThermostatEvent[], PipelineError>>(
+                Result<ThermostatEvent[], PipelineError>.Ok([]));
+        };
+
+        // Select projects from string → ThermostatEffect
+        var projected = inner.Select<ThermostatEffect, ThermostatEvent, string>(
+            _ => new ThermostatEffect.ActivateHeater());
+
+        var result = await projected("any-string");
+
+        Assert.NotNull(receivedEffect);
+        Assert.IsType<ThermostatEffect.ActivateHeater>(receivedEffect);
+        Assert.True(result.IsOk);
+    }
+
+    // =========================================================================
+    // Interpreter Combinators — Catch
+    // =========================================================================
+
+    [Fact]
+    public async Task InterpreterCatch_OnSuccess_PassesThrough()
+    {
+        var catchCalled = false;
+
+        Interpreter<ThermostatEffect, ThermostatEvent> inner = _ =>
+            new ValueTask<Result<ThermostatEvent[], PipelineError>>(
+                Result<ThermostatEvent[], PipelineError>.Ok(
+                    [new ThermostatEvent.HeaterTurnedOn()]));
+
+        var caught = inner.Catch(_ =>
+        {
+            catchCalled = true;
+            return Result<ThermostatEvent[], PipelineError>.Ok([]);
+        });
+
+        var result = await caught(new ThermostatEffect.None());
+
+        Assert.False(catchCalled);
+        Assert.True(result.IsOk);
+        Assert.Single(result.Value);
+    }
+
+    [Fact]
+    public async Task InterpreterCatch_OnError_InvokesHandler()
+    {
+        var pipelineError = new PipelineError("interpreter error", "TestSource");
+
+        Interpreter<ThermostatEffect, ThermostatEvent> inner = _ =>
+            new ValueTask<Result<ThermostatEvent[], PipelineError>>(
+                Result<ThermostatEvent[], PipelineError>.Err(pipelineError));
+
+        PipelineError? capturedError = null;
+        var caught = inner.Catch(err =>
+        {
+            capturedError = err;
+            return Result<ThermostatEvent[], PipelineError>.Ok(
+                [new ThermostatEvent.HeaterTurnedOff()]); // recover with fallback
+        });
+
+        var result = await caught(new ThermostatEffect.None());
+
+        Assert.NotNull(capturedError);
+        Assert.Equal("interpreter error", capturedError.Value.Message);
+        Assert.True(result.IsOk);
+        Assert.Single(result.Value);
+        Assert.IsType<ThermostatEvent.HeaterTurnedOff>(result.Value[0]);
+    }
+
+    [Fact]
+    public async Task InterpreterCatch_HandlerCanReError()
+    {
+        var originalError = new PipelineError("original");
+        var replacementError = new PipelineError("replaced", "Recovery");
+
+        Interpreter<ThermostatEffect, ThermostatEvent> inner = _ =>
+            new ValueTask<Result<ThermostatEvent[], PipelineError>>(
+                Result<ThermostatEvent[], PipelineError>.Err(originalError));
+
+        var caught = inner.Catch(_ =>
+            Result<ThermostatEvent[], PipelineError>.Err(replacementError));
+
+        var result = await caught(new ThermostatEffect.None());
+
+        Assert.True(result.IsErr);
+        Assert.Equal("replaced", result.Error.Message);
+    }
 }
