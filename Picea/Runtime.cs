@@ -80,6 +80,38 @@ public static class PipelineResult
 }
 
 /// <summary>
+/// Pre-allocated Result values for common interpreter pipeline outcomes.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Provides a cached empty result for interpreters that produce no feedback events,
+/// analogous to <see cref="PipelineResult.Ok"/> for observers.
+/// </para>
+/// <example>
+/// <code>
+/// // Instead of constructing a new ValueTask + Result + empty array each time:
+/// Interpreter&lt;MyEffect, MyEvent&gt; noOp = _ =>
+///     new ValueTask&lt;Result&lt;MyEvent[], PipelineError&gt;&gt;(
+///         Result&lt;MyEvent[], PipelineError&gt;.Ok([]));
+///
+/// // Use the pre-allocated empty result:
+/// Interpreter&lt;MyEffect, MyEvent&gt; noOp = _ =>
+///     InterpreterResult&lt;MyEvent&gt;.Empty;
+/// </code>
+/// </example>
+/// </remarks>
+/// <typeparam name="TEvent">The event type produced by the interpreter.</typeparam>
+public static class InterpreterResult<TEvent>
+{
+    /// <summary>
+    /// A completed ValueTask containing Ok(Array.Empty) — the happy path for interpreters
+    /// that produce no feedback events.
+    /// </summary>
+    public static readonly ValueTask<Result<TEvent[], PipelineError>> Empty =
+        new(Result<TEvent[], PipelineError>.Ok(Array.Empty<TEvent>()));
+}
+
+/// <summary>
 /// The shared automaton runtime: a monadic left fold with Observer and Interpreter.
 /// </summary>
 public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParameters> : IDisposable

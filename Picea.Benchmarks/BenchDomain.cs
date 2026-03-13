@@ -113,8 +113,7 @@ public static class BenchObservers
 public static class BenchInterpreters
 {
     public static readonly Interpreter<BenchEffect, BenchEvent> NoOp =
-        _ => new ValueTask<Result<BenchEvent[], PipelineError>>(
-            Result<BenchEvent[], PipelineError>.Ok([]));
+        _ => InterpreterResult<BenchEvent>.Empty;
 
     /// <summary>
     /// Interpreter that produces one feedback event per <see cref="BenchEffect.Trigger"/>.
@@ -126,8 +125,6 @@ public static class BenchInterpreters
             BenchEffect.Trigger(var n) =>
                 new ValueTask<Result<BenchEvent[], PipelineError>>(
                     Result<BenchEvent[], PipelineError>.Ok([new BenchEvent.Increment(n)])),
-            _ =>
-                new ValueTask<Result<BenchEvent[], PipelineError>>(
-                    Result<BenchEvent[], PipelineError>.Ok([]))
+            _ => InterpreterResult<BenchEvent>.Empty
         };
 }
