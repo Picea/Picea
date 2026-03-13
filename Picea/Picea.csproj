@@ -14,7 +14,7 @@
     <PackageTags>state-machine;mealy-machine;automaton;mvu;event-sourcing;actor-model;functional;kernel</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageReleaseNotes>https://github.com/picea/picea/releases</PackageReleaseNotes>
-    <Copyright>Copyright 2025 Maurice Peters</Copyright>
+    <Copyright>Copyright 2025-2026 Maurice Peters</Copyright>
   </PropertyGroup>
 
   <ItemGroup>

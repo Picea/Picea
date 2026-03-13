@@ -93,8 +93,7 @@ var runtime = await AutomatonRuntime<Counter, CounterState, CounterEvent, Counte
             Console.WriteLine($"{@event} → {state}");
             return PipelineResult.Ok;
         },
-        interpreter: _ => new ValueTask<Result<CounterEvent[], PipelineError>>(
-            Result<CounterEvent[], PipelineError>.Ok([])));
+        interpreter: _ => InterpreterResult<CounterEvent>.Empty);
 
 await runtime.Dispatch(new CounterEvent.Increment());
 // Prints: Increment → CounterState { Count = 1 }
@@ -349,6 +348,7 @@ Multiple automata can be [composed](docs/concepts/composition.md) into a single 
 | `Result<TSuccess, TError>` | `readonly struct` discriminated union with Map, Bind, MapError, LINQ syntax |
 | `PipelineError` | Structured error for Observer/Interpreter pipelines |
 | `PipelineResult` | Pre-allocated `Ok` value for zero-alloc observer fast path |
+| `InterpreterResult<TEvent>` | Pre-allocated `Empty` value for zero-alloc interpreter fast path |
 | `AutomatonDiagnostics` | OpenTelemetry-compatible tracing (ActivitySource) |
 
 ## The Picea Ecosystem
@@ -377,4 +377,4 @@ Full documentation with concepts, tutorials, how-to guides, and API reference:
 
 ## License
 
-[Apache 2.0](LICENSE) — Copyright 2025 Maurice Peters
+[Apache 2.0](LICENSE) — Copyright 2025-2026 Maurice Peters

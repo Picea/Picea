@@ -18,10 +18,11 @@ via [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning).
 - **Option type**: `Option<TValue>` readonly struct
 - **Observer pipeline**: Monadic combinators — `Then`, `Where`, `Select`, `Catch`, `Combine`
 - **Interpreter pipeline**: Monadic combinators — `Then`, `Where`, `Select`, `Catch`
+- **InterpreterResult\<TEvent\>**: Pre-allocated `Empty` result for zero-alloc interpreter fast paths (analogous to `PipelineResult.Ok`)
 - **Diagnostics**: `AutomatonDiagnostics` with OpenTelemetry-compatible `ActivitySource` tracing
 - **Production guarantees**: Thread-safe dispatch (SemaphoreSlim), cancellation support, bounded feedback loops (max 64 depth)
-- **Documentation**: Concepts, tutorials, how-to guides, API reference, ADRs
-- **Benchmarks**: BenchmarkDotNet suite for kernel operations
+- **Documentation**: Concepts, tutorials, how-to guides, API reference, ADRs (including [zero-alloc domain modeling guide](docs/guides/zero-alloc-domain-modeling.md))
+- **Benchmarks**: BenchmarkDotNet suite for kernel operations with interface-based and record-based domain variants
 
 ### Origin
 
