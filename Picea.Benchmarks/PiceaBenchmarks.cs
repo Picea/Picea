@@ -37,12 +37,25 @@ public class PiceaBenchmarks
     private AutomatonRuntime<BenchAutomaton, BenchState, BenchEvent, BenchEffect, Unit> _leanFeedback = null!;
     private DecidingRuntime<BenchDecider, BenchState, BenchCommand, BenchEvent, BenchEffect, BenchError, Unit> _leanDecider = null!;
 
+    // ── Record-based lean runtimes (abstract record DU, no boxing) ──
+
+    private AutomatonRuntime<RecBenchAutomaton, RecBenchState, RecBenchEvent, RecBenchEffect, Unit> _recLeanNoOp = null!;
+    private AutomatonRuntime<RecBenchAutomaton, RecBenchState, RecBenchEvent, RecBenchEffect, Unit> _recLeanFeedback = null!;
+    private DecidingRuntime<RecBenchDecider, RecBenchState, RecBenchCommand, RecBenchEvent, RecBenchEffect, RecBenchError, Unit> _recLeanDecider = null!;
+
     // ── Pre-allocated events / commands ──────────────────────────────
 
     private static readonly BenchEvent.Increment _singleEvent = new(1);
     private static readonly BenchEvent.WithEffect _effectEvent = new(1);
     private static readonly BenchCommand.Add _acceptCommand = new(1);
     private static readonly BenchCommand.Reject _rejectCommand = new();
+
+    // ── Pre-allocated record-based events / commands ─────────────────
+
+    private static readonly RecBenchEvent.Increment _recSingleEvent = new(1);
+    private static readonly RecBenchEvent.WithEffect _recEffectEvent = new(1);
+    private static readonly RecBenchCommand.Add _recAcceptCommand = new(1);
+    private static readonly RecBenchCommand.Reject _recRejectCommand = new();
 
     [IterationSetup]
     public void Setup()
@@ -92,6 +105,22 @@ public class PiceaBenchmarks
         _safeNoTrackDecider = DecidingRuntime<BenchDecider, BenchState, BenchCommand, BenchEvent, BenchEffect, BenchError, Unit>
             .Start(default, BenchObservers.NoOp, BenchInterpreters.NoOp,
                 threadSafe: true, trackEvents: false)
+            .GetAwaiter().GetResult();
+
+        // Record-based lean runtimes — abstract record DU, no boxing
+        var (recInitState, _) = RecBenchAutomaton.Initialize(default);
+
+        _recLeanNoOp = new AutomatonRuntime<RecBenchAutomaton, RecBenchState, RecBenchEvent, RecBenchEffect, Unit>(
+            recInitState, RecBenchObservers.NoOp, RecBenchInterpreters.NoOp,
+            threadSafe: false, trackEvents: false);
+
+        _recLeanFeedback = new AutomatonRuntime<RecBenchAutomaton, RecBenchState, RecBenchEvent, RecBenchEffect, Unit>(
+            recInitState, RecBenchObservers.NoOp, RecBenchInterpreters.SingleFeedback,
+            threadSafe: false, trackEvents: false);
+
+        _recLeanDecider = DecidingRuntime<RecBenchDecider, RecBenchState, RecBenchCommand, RecBenchEvent, RecBenchEffect, RecBenchError, Unit>
+            .Start(default, RecBenchObservers.NoOp, RecBenchInterpreters.NoOp,
+                threadSafe: false, trackEvents: false)
             .GetAwaiter().GetResult();
     }
 
@@ -165,4 +194,22 @@ public class PiceaBenchmarks
     [Benchmark(Description = "Lean Handle — reject (unserialized, no tracking)")]
     public ValueTask<Result<BenchState, BenchError>> Lean_Handle_Reject()
         => _leanDecider.Handle(_rejectCommand);
+
+    // ── Record-based lean benchmarks (abstract record DU, no boxing) ─
+
+    [Benchmark(Description = "Lean Dispatch (record-based, zero-alloc)")]
+    public ValueTask<Result<Unit, PipelineError>> Rec_Lean_Dispatch_Single()
+        => _recLeanNoOp.Dispatch(_recSingleEvent);
+
+    [Benchmark(Description = "Lean Dispatch with feedback (record-based)")]
+    public ValueTask<Result<Unit, PipelineError>> Rec_Lean_Dispatch_WithFeedback()
+        => _recLeanFeedback.Dispatch(_recEffectEvent);
+
+    [Benchmark(Description = "Lean Handle — accept (record-based)")]
+    public ValueTask<Result<RecBenchState, RecBenchError>> Rec_Lean_Handle_Accept()
+        => _recLeanDecider.Handle(_recAcceptCommand);
+
+    [Benchmark(Description = "Lean Handle — reject (record-based, zero-alloc)")]
+    public ValueTask<Result<RecBenchState, RecBenchError>> Rec_Lean_Handle_Reject()
+        => _recLeanDecider.Handle(_recRejectCommand);
 }
