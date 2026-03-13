@@ -51,6 +51,24 @@ Pre-allocated Result value for the happy path. Zero-alloc fast path.
 
 ---
 
+## InterpreterResult&lt;TEvent&gt;
+
+```csharp
+public static class InterpreterResult<TEvent>
+{
+    public static readonly ValueTask<Result<TEvent[], PipelineError>> Empty;
+}
+```
+
+Pre-allocated empty result for interpreters that produce no feedback events. Zero-alloc fast path — uses `Array.Empty<TEvent>()` internally.
+
+```csharp
+// Usage in an interpreter:
+var noOp = _ => InterpreterResult<MyEvent>.Empty;
+```
+
+---
+
 ## Observer
 
 ```csharp
@@ -145,3 +163,4 @@ Replaces the current state without triggering a transition or observer.
 - [The Runtime](../concepts/the-runtime.md) — conceptual explanation
 - [Observer Composition](../guides/observer-composition.md) — recipes
 - [Building Custom Runtimes](../guides/building-custom-runtimes.md) — how to wire your own
+- [Zero-Alloc Domain Modeling](../guides/zero-alloc-domain-modeling.md) — eliminating heap allocations

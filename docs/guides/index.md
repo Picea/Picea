@@ -13,6 +13,7 @@ Practical recipes for common tasks. Each guide solves a specific problem.
 | [Observer Composition](observer-composition.md) | Then, Where, Catch, Combine recipes |
 | [Testing Strategies](testing-strategies.md) | Testing at every level: pure functions, runtime, integration |
 | [Upgrading to Decider](upgrading-to-decider.md) | Adding command validation to an existing Automaton |
+| [Zero-Alloc Domain Modeling](zero-alloc-domain-modeling.md) | Eliminating heap allocations on hot paths |
 
 ## See Also
 
