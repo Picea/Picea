@@ -16,7 +16,7 @@ public class TracingTests
     /// <summary>
     /// Collects activities emitted by the Automaton ActivitySource during a test.
     /// Uses <see cref="ConcurrentBag{T}"/> because <see cref="ActivityListener.ActivityStopped"/>
-    /// may fire from any thread when xUnit runs tests in parallel.
+    /// may fire from any thread when TUnit runs tests in parallel.
     /// </summary>
     private sealed class ActivityCollector : IDisposable
     {
@@ -41,7 +41,7 @@ public class TracingTests
     // Runtime Tracing
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task Dispatch_EmitsTracingSpan()
     {
         using var collector = new ActivityCollector();
@@ -52,13 +52,13 @@ public class TracingTests
         await runtime.Dispatch(new ThermostatEvent.TemperatureRecorded(18m));
 
         var dispatch = collector.Activities.FirstOrDefault(a => a.DisplayName == "Automaton.Dispatch");
-        Assert.NotNull(dispatch);
-        Assert.Equal("Thermostat", dispatch.GetTagItem("automaton.type"));
-        Assert.Equal("TemperatureRecorded", dispatch.GetTagItem("automaton.event.type"));
-        Assert.Equal(ActivityStatusCode.Ok, dispatch.Status);
+        await Assert.That(dispatch).IsNotNull();
+        await Assert.That(dispatch.GetTagItem("automaton.type")).IsEqualTo("Thermostat");
+        await Assert.That(dispatch.GetTagItem("automaton.event.type")).IsEqualTo("TemperatureRecorded");
+        await Assert.That(dispatch.Status).IsEqualTo(ActivityStatusCode.Ok);
     }
 
-    [Fact]
+    [Test]
     public async Task Start_EmitsTracingSpan()
     {
         using var collector = new ActivityCollector();
@@ -67,13 +67,13 @@ public class TracingTests
             .Start(default, ThermostatObservers.NoOp, ThermostatInterpreters.NoOp);
 
         var start = collector.Activities.FirstOrDefault(a => a.DisplayName == "Automaton.Start");
-        Assert.NotNull(start);
-        Assert.Equal("Thermostat", start.GetTagItem("automaton.type"));
-        Assert.Equal("ThermostatState", start.GetTagItem("automaton.state.type"));
-        Assert.Equal(ActivityStatusCode.Ok, start.Status);
+        await Assert.That(start).IsNotNull();
+        await Assert.That(start.GetTagItem("automaton.type")).IsEqualTo("Thermostat");
+        await Assert.That(start.GetTagItem("automaton.state.type")).IsEqualTo("ThermostatState");
+        await Assert.That(start.Status).IsEqualTo(ActivityStatusCode.Ok);
     }
 
-    [Fact]
+    [Test]
     public async Task InterpretEffect_EmitsTracingSpan()
     {
         using var collector = new ActivityCollector();
@@ -84,13 +84,13 @@ public class TracingTests
         await runtime.InterpretEffect(new ThermostatEffect.None());
 
         var interpret = collector.Activities.FirstOrDefault(a => a.DisplayName == "Automaton.InterpretEffect");
-        Assert.NotNull(interpret);
-        Assert.Equal("Thermostat", interpret.GetTagItem("automaton.type"));
-        Assert.Equal("None", interpret.GetTagItem("automaton.effect.type"));
-        Assert.Equal(ActivityStatusCode.Ok, interpret.Status);
+        await Assert.That(interpret).IsNotNull();
+        await Assert.That(interpret.GetTagItem("automaton.type")).IsEqualTo("Thermostat");
+        await Assert.That(interpret.GetTagItem("automaton.effect.type")).IsEqualTo("None");
+        await Assert.That(interpret.Status).IsEqualTo(ActivityStatusCode.Ok);
     }
 
-    [Fact]
+    [Test]
     public async Task Dispatch_SetsErrorStatusOnFailure()
     {
         using var collector = new ActivityCollector();
@@ -102,17 +102,16 @@ public class TracingTests
             new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, throwingInterpreter);
 
         // HeaterTurnedOn produces ActivateHeater effect -> interpreter throws
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => runtime.Dispatch(new ThermostatEvent.HeaterTurnedOn()).AsTask());
+        await Assert.That(() => runtime.Dispatch(new ThermostatEvent.HeaterTurnedOn()).AsTask()).ThrowsExactly<InvalidOperationException>();
 
         var dispatch = collector.Activities.FirstOrDefault(a =>
             a.DisplayName == "Automaton.Dispatch"
             && a.Status == ActivityStatusCode.Error);
-        Assert.NotNull(dispatch);
-        Assert.Contains("test fault", dispatch.StatusDescription);
+        await Assert.That(dispatch).IsNotNull();
+        await Assert.That(dispatch.StatusDescription).Contains("test fault");
     }
 
-    [Fact]
+    [Test]
     public async Task MultipleDispatches_EmitMultipleSpans()
     {
         using var collector = new ActivityCollector();
@@ -129,20 +128,19 @@ public class TracingTests
         var dispatches = collector.Activities
             .Where(a => a.DisplayName == "Automaton.Dispatch")
             .ToList();
-        Assert.True(dispatches.Count >= 3,
-            $"Expected at least 3 Dispatch spans, got {dispatches.Count}");
+        await Assert.That(dispatches.Count >= 3).IsTrue().Because($"Expected at least 3 Dispatch spans, got {dispatches.Count}");
 
         // Verify we got the specific event types we dispatched
         var eventTypes = dispatches.Select(a => a.GetTagItem("automaton.event.type")).ToList();
-        Assert.Contains("TemperatureRecorded", eventTypes);
-        Assert.Contains("HeaterTurnedOn", eventTypes);
+        await Assert.That(eventTypes).Contains("TemperatureRecorded");
+        await Assert.That(eventTypes).Contains("HeaterTurnedOn");
     }
 
     // =========================================================================
     // Decider Tracing
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task DeciderHandle_EmitsTracingSpan_OnSuccess()
     {
         using var collector = new ActivityCollector();
@@ -152,15 +150,17 @@ public class TracingTests
 
         await runtime.Handle(new ThermostatCommand.RecordReading(18m));
 
-        var handle = collector.Activities.FirstOrDefault(a => a.DisplayName == "Automaton.Decider.Handle");
-        Assert.NotNull(handle);
-        Assert.Equal("Thermostat", handle.GetTagItem("automaton.type"));
-        Assert.Equal("RecordReading", handle.GetTagItem("automaton.command.type"));
-        Assert.Equal("ok", handle.GetTagItem("automaton.result"));
-        Assert.Equal(ActivityStatusCode.Ok, handle.Status);
+        var handle = collector.Activities.FirstOrDefault(a =>
+            a.DisplayName == "Automaton.Decider.Handle"
+            && Equals(a.GetTagItem("automaton.command.type"), "RecordReading"));
+        await Assert.That(handle).IsNotNull();
+        await Assert.That(handle.GetTagItem("automaton.type")).IsEqualTo("Thermostat");
+        await Assert.That(handle.GetTagItem("automaton.command.type")).IsEqualTo("RecordReading");
+        await Assert.That(handle.GetTagItem("automaton.result")).IsEqualTo("ok");
+        await Assert.That(handle.Status).IsEqualTo(ActivityStatusCode.Ok);
     }
 
-    [Fact]
+    [Test]
     public async Task DeciderHandle_EmitsTracingSpan_OnRejection()
     {
         using var collector = new ActivityCollector();
@@ -173,14 +173,14 @@ public class TracingTests
         var handle = collector.Activities.FirstOrDefault(a =>
             a.DisplayName == "Automaton.Decider.Handle"
             && Equals(a.GetTagItem("automaton.command.type"), "SetTarget"));
-        Assert.NotNull(handle);
-        Assert.Equal("error", handle.GetTagItem("automaton.result"));
-        Assert.Equal("InvalidTarget", handle.GetTagItem("automaton.error.type"));
+        await Assert.That(handle).IsNotNull();
+        await Assert.That(handle.GetTagItem("automaton.result")).IsEqualTo("error");
+        await Assert.That(handle.GetTagItem("automaton.error.type")).IsEqualTo("InvalidTarget");
         // Command rejection is NOT a fault — status should be Ok
-        Assert.Equal(ActivityStatusCode.Ok, handle.Status);
+        await Assert.That(handle.Status).IsEqualTo(ActivityStatusCode.Ok);
     }
 
-    [Fact]
+    [Test]
     public async Task DeciderStart_EmitsTracingSpan()
     {
         using var collector = new ActivityCollector();
@@ -189,16 +189,16 @@ public class TracingTests
             ThermostatEvent, ThermostatEffect, ThermostatError, Unit>.Start(default, ThermostatObservers.NoOp, ThermostatInterpreters.NoOp);
 
         var start = collector.Activities.FirstOrDefault(a => a.DisplayName == "Automaton.Decider.Start");
-        Assert.NotNull(start);
-        Assert.Equal("Thermostat", start.GetTagItem("automaton.type"));
-        Assert.Equal(ActivityStatusCode.Ok, start.Status);
+        await Assert.That(start).IsNotNull();
+        await Assert.That(start.GetTagItem("automaton.type")).IsEqualTo("Thermostat");
+        await Assert.That(start.Status).IsEqualTo(ActivityStatusCode.Ok);
     }
 
     // =========================================================================
     // No-listener fast path
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task Dispatch_WorksWithNoListener()
     {
         // No ActivityCollector — no listener registered.
@@ -208,6 +208,6 @@ public class TracingTests
 
         await runtime.Dispatch(new ThermostatEvent.TemperatureRecorded(25m));
 
-        Assert.Equal(25m, runtime.State.CurrentTemp);
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(25m);
     }
 }
