@@ -9,7 +9,7 @@ namespace Picea.Tests;
 
 public class RuntimeTests
 {
-    [Fact]
+    [Test]
     public async Task Dispatch_UpdatesState()
     {
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
@@ -19,11 +19,11 @@ public class RuntimeTests
         await runtime.Dispatch(new ThermostatEvent.HeaterTurnedOn());
         await runtime.Dispatch(new ThermostatEvent.HeaterTurnedOff());
 
-        Assert.Equal(18m, runtime.State.CurrentTemp);
-        Assert.False(runtime.State.Heating);
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(18m);
+        await Assert.That(runtime.State.Heating).IsFalse();
     }
 
-    [Fact]
+    [Test]
     public async Task Observer_ReceivesCorrectArguments()
     {
         var observed = new List<(ThermostatState State, ThermostatEvent Event, ThermostatEffect Effect)>();
@@ -33,13 +33,13 @@ public class RuntimeTests
 
         await runtime.Dispatch(new ThermostatEvent.TemperatureRecorded(25m));
 
-        Assert.Single(observed);
-        Assert.Equal(25m, observed[0].State.CurrentTemp);
-        Assert.IsType<ThermostatEvent.TemperatureRecorded>(observed[0].Event);
-        Assert.IsType<ThermostatEffect.None>(observed[0].Effect);
+        await Assert.That(observed).HasSingleItem();
+        await Assert.That(observed[0].State.CurrentTemp).IsEqualTo(25m);
+        await Assert.That(observed[0].Event).IsTypeOf<ThermostatEvent.TemperatureRecorded>();
+        await Assert.That(observed[0].Effect).IsTypeOf<ThermostatEffect.None>();
     }
 
-    [Fact]
+    [Test]
     public async Task Interpreter_FeedbackEventsAreDispatched()
     {
         var feedbackCount = 0;
@@ -66,11 +66,11 @@ public class RuntimeTests
         await runtime.Dispatch(new ThermostatEvent.HeaterTurnedOn());
 
         // State: CurrentTemp=19, Heating=true (HeaterTurnedOn + feedback TemperatureRecorded)
-        Assert.Equal(19m, runtime.State.CurrentTemp);
-        Assert.True(runtime.State.Heating);
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(19m);
+        await Assert.That(runtime.State.Heating).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task ObserverComposition_Then_BothObserversAreCalled()
     {
         var firstCalls = 0;
@@ -96,25 +96,25 @@ public class RuntimeTests
         await runtime.Dispatch(new ThermostatEvent.TemperatureRecorded(18m));
         await runtime.Dispatch(new ThermostatEvent.HeaterTurnedOn());
 
-        Assert.Equal(2, firstCalls);
-        Assert.Equal(2, secondCalls);
+        await Assert.That(firstCalls).IsEqualTo(2);
+        await Assert.That(secondCalls).IsEqualTo(2);
     }
 
-    [Fact]
-    public void Reset_ReplacesStateWithoutTransition()
+    [Test]
+    public async Task Reset_ReplacesStateWithoutTransition()
     {
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
             new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, ThermostatInterpreters.NoOp);
 
         runtime.Reset(new ThermostatState(25m, 30m, true, true));
 
-        Assert.Equal(25m, runtime.State.CurrentTemp);
-        Assert.Equal(30m, runtime.State.TargetTemp);
-        Assert.True(runtime.State.Heating);
-        Assert.Empty(runtime.Events);
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(25m);
+        await Assert.That(runtime.State.TargetTemp).IsEqualTo(30m);
+        await Assert.That(runtime.State.Heating).IsTrue();
+        await Assert.That(runtime.Events).IsEmpty();
     }
 
-    [Fact]
+    [Test]
     public async Task Events_RecordedIncludingFeedback()
     {
         var feedbackCount = 0;
@@ -139,30 +139,30 @@ public class RuntimeTests
         await runtime.Dispatch(new ThermostatEvent.HeaterTurnedOn());
 
         // Events: HeaterTurnedOn, TemperatureRecorded(19) (feedback)
-        Assert.Equal(2, runtime.Events.Count);
-        Assert.IsType<ThermostatEvent.HeaterTurnedOn>(runtime.Events[0]);
-        Assert.IsType<ThermostatEvent.TemperatureRecorded>(runtime.Events[1]);
+        await Assert.That(runtime.Events.Count).IsEqualTo(2);
+        await Assert.That(runtime.Events[0]).IsTypeOf<ThermostatEvent.HeaterTurnedOn>();
+        await Assert.That(runtime.Events[1]).IsTypeOf<ThermostatEvent.TemperatureRecorded>();
     }
 
-    [Fact]
+    [Test]
     public async Task Start_CreatesRuntimeAndInterpretsInitEffect()
     {
         var runtime = await AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>
             .Start(default, ThermostatObservers.NoOp, ThermostatInterpreters.NoOp);
 
         // Thermostat.Initialize() produces (CurrentTemp=20, TargetTemp=22, Heating=false, Active=true), None
-        Assert.Equal(20m, runtime.State.CurrentTemp);
-        Assert.Equal(22m, runtime.State.TargetTemp);
-        Assert.False(runtime.State.Heating);
-        Assert.True(runtime.State.Active);
-        Assert.Empty(runtime.Events);
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(20m);
+        await Assert.That(runtime.State.TargetTemp).IsEqualTo(22m);
+        await Assert.That(runtime.State.Heating).IsFalse();
+        await Assert.That(runtime.State.Active).IsTrue();
+        await Assert.That(runtime.Events).IsEmpty();
     }
 
     // =========================================================================
     // Thread Safety
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task ConcurrentDispatches_AreSerializedAndProduceCorrectFinalState()
     {
         // Arrange: 100 concurrent temperature readings
@@ -178,11 +178,11 @@ public class RuntimeTests
         await Task.WhenAll(tasks);
 
         // Assert: every event was applied — no lost updates
-        Assert.Equal(15m, runtime.State.CurrentTemp);
-        Assert.Equal(concurrency, runtime.Events.Count);
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(15m);
+        await Assert.That(runtime.Events.Count).IsEqualTo(concurrency);
     }
 
-    [Fact]
+    [Test]
     public async Task ConcurrentMixedDispatches_ProduceCorrectFinalState()
     {
         // Arrange: 50 HeaterTurnedOn + 30 HeaterTurnedOff = 80 events total
@@ -201,14 +201,14 @@ public class RuntimeTests
         await Task.WhenAll(onTasks.Concat(offTasks));
 
         // Assert: all events were serialized — no lost updates
-        Assert.Equal(onCount + offCount, runtime.Events.Count);
+        await Assert.That(runtime.Events.Count).IsEqualTo(onCount + offCount);
     }
 
     // =========================================================================
     // Cancellation
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task Dispatch_ThrowsWhenCancelled()
     {
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
@@ -217,14 +217,14 @@ public class RuntimeTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => runtime.Dispatch(new ThermostatEvent.TemperatureRecorded(25m), cts.Token).AsTask());
+        await Assert.That(() => runtime.Dispatch(new ThermostatEvent.TemperatureRecorded(25m), cts.Token).AsTask())
+            .Throws<OperationCanceledException>();
 
         // State should be unchanged
-        Assert.Equal(20m, runtime.State.CurrentTemp);
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(20m);
     }
 
-    [Fact]
+    [Test]
     public async Task InterpretEffect_ThrowsWhenCancelled()
     {
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
@@ -233,22 +233,22 @@ public class RuntimeTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => runtime.InterpretEffect(new ThermostatEffect.None(), cts.Token).AsTask());
+        await Assert.That(() => runtime.InterpretEffect(new ThermostatEffect.None(), cts.Token).AsTask())
+            .Throws<OperationCanceledException>();
     }
 
-    [Fact]
+    [Test]
     public async Task Start_ThrowsWhenCancelled()
     {
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>
-                .Start(default, ThermostatObservers.NoOp, ThermostatInterpreters.NoOp, cancellationToken: cts.Token).AsTask());
+        await Assert.That(() => AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>
+                .Start(default, ThermostatObservers.NoOp, ThermostatInterpreters.NoOp, cancellationToken: cts.Token).AsTask())
+            .Throws<OperationCanceledException>();
     }
 
-    [Fact]
+    [Test]
     public async Task CancellationDuringFeedbackLoop_StopsProcessing()
     {
         using var cts = new CancellationTokenSource();
@@ -277,19 +277,20 @@ public class RuntimeTests
             new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, cancellingInterpreter);
 
         // AlertRaised -> SendNotification effect -> interpreter returns [AlertRaised] -> loop
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => runtime.Dispatch(new ThermostatEvent.AlertRaised("test"), cts.Token).AsTask());
+        await Assert.That(() => runtime.Dispatch(new ThermostatEvent.AlertRaised("test"), cts.Token).AsTask())
+            .Throws<OperationCanceledException>();
 
         // The loop was stopped before depth 64
-        Assert.True(interpreterCalls >= 2);
-        Assert.True(interpreterCalls < AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>.MaxFeedbackDepth);
+        await Assert.That(interpreterCalls >= 2).IsTrue();
+        await Assert.That(interpreterCalls < AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>.MaxFeedbackDepth)
+            .IsTrue();
     }
 
     // =========================================================================
     // Feedback Depth Guard
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task FeedbackLoop_ThrowsAtMaxDepth()
     {
         // Interpreter: SendNotification -> [AlertRaised] -> SendNotification -> ... infinite loop
@@ -310,45 +311,49 @@ public class RuntimeTests
             new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, runawayInterpreter);
 
         // AlertRaised -> SendNotification -> AlertRaised -> ... -> depth exceeded
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => runtime.Dispatch(new ThermostatEvent.AlertRaised("test")).AsTask());
+        var ex = await Assert.That(() => runtime.Dispatch(new ThermostatEvent.AlertRaised("test")).AsTask())
+            .ThrowsExactly<InvalidOperationException>();
 
-        Assert.Contains("maximum depth", ex.Message);
-        Assert.Contains(AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>
-            .MaxFeedbackDepth.ToString(), ex.Message);
+        await Assert.That(ex.Message).Contains("maximum depth");
+        await Assert.That(ex.Message).Contains(
+            AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>
+                .MaxFeedbackDepth.ToString());
     }
 
-    [Fact]
-    public void MaxFeedbackDepth_Is64()
+    [Test]
+    public async Task MaxFeedbackDepth_Is64()
     {
-        Assert.Equal(64, AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>.MaxFeedbackDepth);
+        await Assert.That(AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>.MaxFeedbackDepth)
+            .IsEqualTo(64);
     }
 
     // =========================================================================
     // Null Safety
     // =========================================================================
 
-    [Fact]
-    public void Constructor_ThrowsOnNullObserver()
+    [Test]
+    public async Task Constructor_ThrowsOnNullObserver()
     {
-        Assert.Throws<ArgumentNullException>(() =>
+        await Assert.That(() =>
             new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
-                new ThermostatState(20m, 22m, false, true), null!, ThermostatInterpreters.NoOp));
+                new ThermostatState(20m, 22m, false, true), null!, ThermostatInterpreters.NoOp))
+            .ThrowsExactly<ArgumentNullException>();
     }
 
-    [Fact]
-    public void Constructor_ThrowsOnNullInterpreter()
+    [Test]
+    public async Task Constructor_ThrowsOnNullInterpreter()
     {
-        Assert.Throws<ArgumentNullException>(() =>
+        await Assert.That(() =>
             new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
-                new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, null!));
+                new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, null!))
+            .ThrowsExactly<ArgumentNullException>();
     }
 
     // =========================================================================
     // Unserialized (threadSafe=false)
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task Dispatch_Unserialized_UpdatesState()
     {
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
@@ -357,20 +362,20 @@ public class RuntimeTests
 
         await runtime.Dispatch(new ThermostatEvent.TemperatureRecorded(18m));
 
-        Assert.Equal(18m, runtime.State.CurrentTemp);
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(18m);
     }
 
-    [Fact]
+    [Test]
     public async Task Start_Unserialized_CreatesRuntime()
     {
         var runtime = await AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>
             .Start(default, ThermostatObservers.NoOp, ThermostatInterpreters.NoOp, threadSafe: false);
 
-        Assert.Equal(20m, runtime.State.CurrentTemp);
-        Assert.True(runtime.State.Active);
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(20m);
+        await Assert.That(runtime.State.Active).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task InterpretEffect_Unserialized_Works()
     {
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
@@ -379,14 +384,14 @@ public class RuntimeTests
 
         await runtime.InterpretEffect(new ThermostatEffect.None());
 
-        Assert.Equal(20m, runtime.State.CurrentTemp); // state unchanged
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(20m); // state unchanged
     }
 
     // =========================================================================
     // Event Tracking Disabled (trackEvents=false)
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task Dispatch_TrackingDisabled_DoesNotRecordEvents()
     {
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
@@ -396,12 +401,12 @@ public class RuntimeTests
         await runtime.Dispatch(new ThermostatEvent.TemperatureRecorded(18m));
         await runtime.Dispatch(new ThermostatEvent.HeaterTurnedOn());
 
-        Assert.Equal(18m, runtime.State.CurrentTemp);
-        Assert.True(runtime.State.Heating);
-        Assert.Empty(runtime.Events); // no events recorded
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(18m);
+        await Assert.That(runtime.State.Heating).IsTrue();
+        await Assert.That(runtime.Events).IsEmpty(); // no events recorded
     }
 
-    [Fact]
+    [Test]
     public async Task Dispatch_TrackingEnabled_RecordsEvents()
     {
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
@@ -410,14 +415,14 @@ public class RuntimeTests
 
         await runtime.Dispatch(new ThermostatEvent.TemperatureRecorded(18m));
 
-        Assert.Single(runtime.Events);
+        await Assert.That(runtime.Events).HasSingleItem();
     }
 
     // =========================================================================
     // Lean Mode (threadSafe=false, trackEvents=false)
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task LeanMode_DispatchesCorrectly()
     {
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
@@ -429,12 +434,12 @@ public class RuntimeTests
         await runtime.Dispatch(new ThermostatEvent.TemperatureRecorded(23m));
         await runtime.Dispatch(new ThermostatEvent.HeaterTurnedOff());
 
-        Assert.Equal(23m, runtime.State.CurrentTemp);
-        Assert.False(runtime.State.Heating);
-        Assert.Empty(runtime.Events);
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(23m);
+        await Assert.That(runtime.State.Heating).IsFalse();
+        await Assert.That(runtime.Events).IsEmpty();
     }
 
-    [Fact]
+    [Test]
     public async Task LeanMode_FeedbackLoopWorks()
     {
         var feedbackCount = 0;
@@ -458,28 +463,28 @@ public class RuntimeTests
 
         await runtime.Dispatch(new ThermostatEvent.HeaterTurnedOn());
 
-        Assert.Equal(19m, runtime.State.CurrentTemp);
-        Assert.True(runtime.State.Heating);
-        Assert.Empty(runtime.Events);
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(19m);
+        await Assert.That(runtime.State.Heating).IsTrue();
+        await Assert.That(runtime.Events).IsEmpty();
     }
 
-    [Fact]
+    [Test]
     public async Task LeanMode_Start_Works()
     {
         var runtime = await AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>
             .Start(default, ThermostatObservers.NoOp, ThermostatInterpreters.NoOp,
                 threadSafe: false, trackEvents: false);
 
-        Assert.Equal(20m, runtime.State.CurrentTemp);
-        Assert.Empty(runtime.Events);
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(20m);
+        await Assert.That(runtime.Events).IsEmpty();
     }
 
     // =========================================================================
     // Thread-Safe Reset
     // =========================================================================
 
-    [Fact]
-    public void Reset_ThreadSafe_AcquiresGate()
+    [Test]
+    public async Task Reset_ThreadSafe_AcquiresGate()
     {
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
             new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, ThermostatInterpreters.NoOp,
@@ -487,12 +492,12 @@ public class RuntimeTests
 
         runtime.Reset(new ThermostatState(25m, 30m, true, true));
 
-        Assert.Equal(25m, runtime.State.CurrentTemp);
-        Assert.Equal(30m, runtime.State.TargetTemp);
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(25m);
+        await Assert.That(runtime.State.TargetTemp).IsEqualTo(30m);
     }
 
-    [Fact]
-    public void Reset_Unserialized_Works()
+    [Test]
+    public async Task Reset_Unserialized_Works()
     {
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
             new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, ThermostatInterpreters.NoOp,
@@ -500,10 +505,10 @@ public class RuntimeTests
 
         runtime.Reset(new ThermostatState(25m, 30m, true, true));
 
-        Assert.Equal(25m, runtime.State.CurrentTemp);
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(25m);
     }
 
-    [Fact]
+    [Test]
     public async Task Reset_ThreadSafe_WaitsForInFlightDispatch()
     {
         // Verify Reset doesn't corrupt state when a dispatch is in-flight.
@@ -537,46 +542,48 @@ public class RuntimeTests
 
         // Give Reset a moment — it should NOT complete yet
         await Task.Delay(50);
-        Assert.False(resetCompleted, "Reset should be blocked while dispatch holds the gate");
+        await Assert.That(resetCompleted).IsFalse().Because("Reset should be blocked while dispatch holds the gate");
 
         // Release the dispatch
         allowDispatchToFinish.SetResult();
         await dispatchTask;
         await resetTask;
 
-        Assert.True(resetCompleted);
-        Assert.Equal(99m, runtime.State.CurrentTemp);
+        await Assert.That(resetCompleted).IsTrue();
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(99m);
     }
 
     // =========================================================================
     // IDisposable
     // =========================================================================
 
-    [Fact]
-    public void Dispose_CanBeCalledMultipleTimes()
+    [Test]
+    public async Task Dispose_CanBeCalledMultipleTimes()
     {
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
             new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, ThermostatInterpreters.NoOp);
 
         runtime.Dispose();
         runtime.Dispose(); // Should not throw
+
+        await Task.CompletedTask;
     }
 
-    [Fact]
+    [Test]
     public async Task Dispose_AfterUse_DoesNotThrow()
     {
         using var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
             new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, ThermostatInterpreters.NoOp);
 
         await runtime.Dispatch(new ThermostatEvent.TemperatureRecorded(18m));
-        Assert.Equal(18m, runtime.State.CurrentTemp);
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(18m);
     }
 
     // =========================================================================
     // Observer Combinators — Where
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task ObserverWhere_PredicateTrue_InvokesObserver()
     {
         var called = false;
@@ -592,11 +599,11 @@ public class RuntimeTests
         var state = new ThermostatState(20m, 22m, false, true);
         var result = await filtered(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
 
-        Assert.True(called);
-        Assert.True(result.IsOk);
+        await Assert.That(called).IsTrue();
+        await Assert.That(result.IsOk).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task ObserverWhere_PredicateFalse_SkipsObserver()
     {
         var called = false;
@@ -612,15 +619,15 @@ public class RuntimeTests
         var state = new ThermostatState(20m, 22m, false, true);
         var result = await filtered(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
 
-        Assert.False(called);
-        Assert.True(result.IsOk);
+        await Assert.That(called).IsFalse();
+        await Assert.That(result.IsOk).IsTrue();
     }
 
     // =========================================================================
     // Observer Combinators — Select
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task ObserverSelect_ProjectsArguments()
     {
         ThermostatState? receivedState = null;
@@ -640,16 +647,16 @@ public class RuntimeTests
 
         var result = await projected("hello", 42, true);
 
-        Assert.NotNull(receivedState);
-        Assert.Equal(99m, receivedState.CurrentTemp);
-        Assert.True(result.IsOk);
+        await Assert.That(receivedState).IsNotNull();
+        await Assert.That(receivedState!.CurrentTemp).IsEqualTo(99m);
+        await Assert.That(result.IsOk).IsTrue();
     }
 
     // =========================================================================
     // Observer Combinators — Catch
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task ObserverCatch_OnSuccess_PassesThrough()
     {
         var catchCalled = false;
@@ -666,11 +673,11 @@ public class RuntimeTests
         var state = new ThermostatState(20m, 22m, false, true);
         var result = await caught(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
 
-        Assert.False(catchCalled);
-        Assert.True(result.IsOk);
+        await Assert.That(catchCalled).IsFalse();
+        await Assert.That(result.IsOk).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task ObserverCatch_OnError_InvokesHandler()
     {
         var pipelineError = new PipelineError("test error", "TestSource");
@@ -689,12 +696,12 @@ public class RuntimeTests
         var state = new ThermostatState(20m, 22m, false, true);
         var result = await caught(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
 
-        Assert.NotNull(capturedError);
-        Assert.Equal("test error", capturedError.Value.Message);
-        Assert.True(result.IsOk);
+        await Assert.That(capturedError).IsNotNull();
+        await Assert.That(capturedError.Value.Message).IsEqualTo("test error");
+        await Assert.That(result.IsOk).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task ObserverCatch_HandlerCanReError()
     {
         var originalError = new PipelineError("original");
@@ -710,15 +717,15 @@ public class RuntimeTests
         var state = new ThermostatState(20m, 22m, false, true);
         var result = await caught(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
 
-        Assert.True(result.IsErr);
-        Assert.Equal("replaced", result.Error.Message);
+        await Assert.That(result.IsErr).IsTrue();
+        await Assert.That(result.Error.Message).IsEqualTo("replaced");
     }
 
     // =========================================================================
     // Observer Combinators — Combine
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task ObserverCombine_BothSucceed_ReturnsOk()
     {
         var firstCalled = false;
@@ -741,12 +748,12 @@ public class RuntimeTests
         var state = new ThermostatState(20m, 22m, false, true);
         var result = await combined(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
 
-        Assert.True(firstCalled);
-        Assert.True(secondCalled);
-        Assert.True(result.IsOk);
+        await Assert.That(firstCalled).IsTrue();
+        await Assert.That(secondCalled).IsTrue();
+        await Assert.That(result.IsOk).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task ObserverCombine_FirstFails_SecondStillRuns()
     {
         var secondCalled = false;
@@ -767,12 +774,12 @@ public class RuntimeTests
         var state = new ThermostatState(20m, 22m, false, true);
         var result = await combined(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
 
-        Assert.True(secondCalled, "second observer should still run when first fails");
-        Assert.True(result.IsErr);
-        Assert.Equal("first failed", result.Error.Message);
+        await Assert.That(secondCalled).IsTrue().Because("second observer should still run when first fails");
+        await Assert.That(result.IsErr).IsTrue();
+        await Assert.That(result.Error.Message).IsEqualTo("first failed");
     }
 
-    [Fact]
+    [Test]
     public async Task ObserverCombine_SecondFails_ReturnsSecondError()
     {
         var error = new PipelineError("second failed");
@@ -789,11 +796,11 @@ public class RuntimeTests
         var state = new ThermostatState(20m, 22m, false, true);
         var result = await combined(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
 
-        Assert.True(result.IsErr);
-        Assert.Equal("second failed", result.Error.Message);
+        await Assert.That(result.IsErr).IsTrue();
+        await Assert.That(result.Error.Message).IsEqualTo("second failed");
     }
 
-    [Fact]
+    [Test]
     public async Task ObserverCombine_BothFail_ReturnsFirstError()
     {
         var error1 = new PipelineError("first");
@@ -812,15 +819,15 @@ public class RuntimeTests
         var state = new ThermostatState(20m, 22m, false, true);
         var result = await combined(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
 
-        Assert.True(result.IsErr);
-        Assert.Equal("first", result.Error.Message);
+        await Assert.That(result.IsErr).IsTrue();
+        await Assert.That(result.Error.Message).IsEqualTo("first");
     }
 
     // =========================================================================
     // Observer Combinators — Then (error short-circuit)
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task ObserverThen_FirstFails_SecondNotCalled()
     {
         var secondCalled = false;
@@ -841,16 +848,16 @@ public class RuntimeTests
         var state = new ThermostatState(20m, 22m, false, true);
         var result = await chained(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
 
-        Assert.False(secondCalled, "second observer should not run when first fails (Then short-circuits)");
-        Assert.True(result.IsErr);
-        Assert.Equal("first failed", result.Error.Message);
+        await Assert.That(secondCalled).IsFalse().Because("second observer should not run when first fails (Then short-circuits)");
+        await Assert.That(result.IsErr).IsTrue();
+        await Assert.That(result.Error.Message).IsEqualTo("first failed");
     }
 
     // =========================================================================
     // Interpreter Combinators — Then
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task InterpreterThen_ConcatenatesEvents()
     {
         Interpreter<ThermostatEffect, ThermostatEvent> first = _ =>
@@ -867,13 +874,13 @@ public class RuntimeTests
 
         var result = await chained(new ThermostatEffect.None());
 
-        Assert.True(result.IsOk);
-        Assert.Equal(2, result.Value.Length);
-        Assert.IsType<ThermostatEvent.TemperatureRecorded>(result.Value[0]);
-        Assert.IsType<ThermostatEvent.HeaterTurnedOn>(result.Value[1]);
+        await Assert.That(result.IsOk).IsTrue();
+        await Assert.That(result.Value.Length).IsEqualTo(2);
+        await Assert.That(result.Value[0]).IsTypeOf<ThermostatEvent.TemperatureRecorded>();
+        await Assert.That(result.Value[1]).IsTypeOf<ThermostatEvent.HeaterTurnedOn>();
     }
 
-    [Fact]
+    [Test]
     public async Task InterpreterThen_FirstFails_ShortCircuits()
     {
         var secondCalled = false;
@@ -894,12 +901,12 @@ public class RuntimeTests
 
         var result = await chained(new ThermostatEffect.None());
 
-        Assert.False(secondCalled);
-        Assert.True(result.IsErr);
-        Assert.Equal("interpreter failed", result.Error.Message);
+        await Assert.That(secondCalled).IsFalse();
+        await Assert.That(result.IsErr).IsTrue();
+        await Assert.That(result.Error.Message).IsEqualTo("interpreter failed");
     }
 
-    [Fact]
+    [Test]
     public async Task InterpreterThen_BothEmpty_ReturnsEmptyArray()
     {
         Interpreter<ThermostatEffect, ThermostatEvent> first = _ =>
@@ -914,15 +921,15 @@ public class RuntimeTests
 
         var result = await chained(new ThermostatEffect.None());
 
-        Assert.True(result.IsOk);
-        Assert.Empty(result.Value);
+        await Assert.That(result.IsOk).IsTrue();
+        await Assert.That(result.Value).IsEmpty();
     }
 
     // =========================================================================
     // Interpreter Combinators — Where
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task InterpreterWhere_PredicateTrue_InvokesInterpreter()
     {
         var called = false;
@@ -939,12 +946,12 @@ public class RuntimeTests
 
         var result = await filtered(new ThermostatEffect.ActivateHeater());
 
-        Assert.True(called);
-        Assert.True(result.IsOk);
-        Assert.Single(result.Value);
+        await Assert.That(called).IsTrue();
+        await Assert.That(result.IsOk).IsTrue();
+        await Assert.That(result.Value).HasSingleItem();
     }
 
-    [Fact]
+    [Test]
     public async Task InterpreterWhere_PredicateFalse_ReturnsEmptyEvents()
     {
         var called = false;
@@ -961,16 +968,16 @@ public class RuntimeTests
 
         var result = await filtered(new ThermostatEffect.None());
 
-        Assert.False(called);
-        Assert.True(result.IsOk);
-        Assert.Empty(result.Value);
+        await Assert.That(called).IsFalse();
+        await Assert.That(result.IsOk).IsTrue();
+        await Assert.That(result.Value).IsEmpty();
     }
 
     // =========================================================================
     // Interpreter Combinators — Select
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task InterpreterSelect_ProjectsEffect()
     {
         ThermostatEffect? receivedEffect = null;
@@ -988,16 +995,16 @@ public class RuntimeTests
 
         var result = await projected("any-string");
 
-        Assert.NotNull(receivedEffect);
-        Assert.IsType<ThermostatEffect.ActivateHeater>(receivedEffect);
-        Assert.True(result.IsOk);
+        await Assert.That(receivedEffect).IsNotNull();
+        await Assert.That(receivedEffect).IsTypeOf<ThermostatEffect.ActivateHeater>();
+        await Assert.That(result.IsOk).IsTrue();
     }
 
     // =========================================================================
     // Interpreter Combinators — Catch
     // =========================================================================
 
-    [Fact]
+    [Test]
     public async Task InterpreterCatch_OnSuccess_PassesThrough()
     {
         var catchCalled = false;
@@ -1015,12 +1022,12 @@ public class RuntimeTests
 
         var result = await caught(new ThermostatEffect.None());
 
-        Assert.False(catchCalled);
-        Assert.True(result.IsOk);
-        Assert.Single(result.Value);
+        await Assert.That(catchCalled).IsFalse();
+        await Assert.That(result.IsOk).IsTrue();
+        await Assert.That(result.Value).HasSingleItem();
     }
 
-    [Fact]
+    [Test]
     public async Task InterpreterCatch_OnError_InvokesHandler()
     {
         var pipelineError = new PipelineError("interpreter error", "TestSource");
@@ -1039,14 +1046,14 @@ public class RuntimeTests
 
         var result = await caught(new ThermostatEffect.None());
 
-        Assert.NotNull(capturedError);
-        Assert.Equal("interpreter error", capturedError.Value.Message);
-        Assert.True(result.IsOk);
-        Assert.Single(result.Value);
-        Assert.IsType<ThermostatEvent.HeaterTurnedOff>(result.Value[0]);
+        await Assert.That(capturedError).IsNotNull();
+        await Assert.That(capturedError.Value.Message).IsEqualTo("interpreter error");
+        await Assert.That(result.IsOk).IsTrue();
+        await Assert.That(result.Value).HasSingleItem();
+        await Assert.That(result.Value[0]).IsTypeOf<ThermostatEvent.HeaterTurnedOff>();
     }
 
-    [Fact]
+    [Test]
     public async Task InterpreterCatch_HandlerCanReError()
     {
         var originalError = new PipelineError("original");
@@ -1061,7 +1068,7 @@ public class RuntimeTests
 
         var result = await caught(new ThermostatEffect.None());
 
-        Assert.True(result.IsErr);
-        Assert.Equal("replaced", result.Error.Message);
+        await Assert.That(result.IsErr).IsTrue();
+        await Assert.That(result.Error.Message).IsEqualTo("replaced");
     }
 }

@@ -17,65 +17,65 @@ public sealed class OptionTests
 {
     // ── Factory methods ───────────────────────────────────────────────
 
-    [Fact]
-    public void Some_creates_option_with_value()
+    [Test]
+    public async Task Some_creates_option_with_value()
     {
         var option = Option<int>.Some(42);
 
-        Assert.True(option.IsSome);
-        Assert.False(option.IsNone);
-        Assert.Equal(42, option.Value);
+        await Assert.That(option.IsSome).IsTrue();
+        await Assert.That(option.IsNone).IsFalse();
+        await Assert.That(option.Value).IsEqualTo(42);
     }
 
-    [Fact]
-    public void None_creates_empty_option()
+    [Test]
+    public async Task None_creates_empty_option()
     {
         var option = Option<int>.None;
 
-        Assert.False(option.IsSome);
-        Assert.True(option.IsNone);
+        await Assert.That(option.IsSome).IsFalse();
+        await Assert.That(option.IsNone).IsTrue();
     }
 
-    [Fact]
-    public void Static_Some_creates_option_with_type_inference()
+    [Test]
+    public async Task Static_Some_creates_option_with_type_inference()
     {
         var option = Option.Some(42);
 
-        Assert.True(option.IsSome);
-        Assert.Equal(42, option.Value);
+        await Assert.That(option.IsSome).IsTrue();
+        await Assert.That(option.Value).IsEqualTo(42);
     }
 
-    [Fact]
-    public void Static_None_creates_empty_option_with_type_inference()
+    [Test]
+    public async Task Static_None_creates_empty_option_with_type_inference()
     {
         var option = Option.None<int>();
 
-        Assert.True(option.IsNone);
+        await Assert.That(option.IsNone).IsTrue();
     }
 
     // ── Throwing accessor ─────────────────────────────────────────────
 
-    [Fact]
-    public void Value_on_None_throws_InvalidOperationException()
+    [Test]
+    public async Task Value_on_None_throws_InvalidOperationException()
     {
         var option = Option<int>.None;
 
-        var ex = Assert.Throws<InvalidOperationException>(() => option.Value);
-        Assert.Contains("None", ex.Message);
+        var ex = await Assert.That(() => option.Value).ThrowsExactly<InvalidOperationException>();
+        await Assert.That(ex.Message).Contains("None");
     }
 
-    [Fact]
-    public void Value_on_Some_returns_contained_value()
+    [Test]
+    public async Task Value_on_Some_returns_contained_value()
     {
         var option = Option<string>.Some("hello");
 
-        Assert.Equal("hello", option.Value);
+        await Assert.That(option.Value).IsEqualTo("hello");
     }
 
     // ── Match (catamorphism) ──────────────────────────────────────────
 
-    [Fact]
-    public void Match_invokes_some_branch_on_Some()
+    [Test]
+    public async Task Match_invokes_some_branch_on_Some()
     {
         var option = Option<int>.Some(42);
 
@@ -83,11 +83,11 @@ public sealed class OptionTests
             some: v => $"value={v}",
             none: () => "empty");
 
-        Assert.Equal("value=42", message);
+        await Assert.That(message).IsEqualTo("value=42");
     }
 
-    [Fact]
-    public void Match_invokes_none_branch_on_None()
+    [Test]
+    public async Task Match_invokes_none_branch_on_None()
     {
         var option = Option<int>.None;
 
@@ -95,11 +95,11 @@ public sealed class OptionTests
             some: v => $"value={v}",
             none: () => "empty");
 
-        Assert.Equal("empty", message);
+        await Assert.That(message).IsEqualTo("empty");
     }
 
-    [Fact]
-    public void Match_supports_type_coercion_through_common_base()
+    [Test]
+    public async Task Match_supports_type_coercion_through_common_base()
     {
         var some = Option<int>.Some(1);
         var none = Option<int>.None;
@@ -107,14 +107,14 @@ public sealed class OptionTests
         object someResult = some.Match<object>(some: v => v, none: () => "nothing");
         object noneResult = none.Match<object>(some: v => v, none: () => "nothing");
 
-        Assert.Equal(1, someResult);
-        Assert.Equal("nothing", noneResult);
+        await Assert.That(someResult).IsEqualTo(1);
+        await Assert.That(noneResult).IsEqualTo("nothing");
     }
 
     // ── Switch (void catamorphism) ───────────────────────────────────
 
-    [Fact]
-    public void Switch_invokes_some_action_on_Some()
+    [Test]
+    public async Task Switch_invokes_some_action_on_Some()
     {
         var option = Option<int>.Some(42);
         var captured = 0;
@@ -123,11 +123,11 @@ public sealed class OptionTests
             some: v => captured = v,
             none: () => captured = -1);
 
-        Assert.Equal(42, captured);
+        await Assert.That(captured).IsEqualTo(42);
     }
 
-    [Fact]
-    public void Switch_invokes_none_action_on_None()
+    [Test]
+    public async Task Switch_invokes_none_action_on_None()
     {
         var option = Option<int>.None;
         var captured = false;
@@ -136,66 +136,66 @@ public sealed class OptionTests
             some: _ => captured = false,
             none: () => captured = true);
 
-        Assert.True(captured);
+        await Assert.That(captured).IsTrue();
     }
 
     // ── TryGetValue ──────────────────────────────────────────────────
 
-    [Fact]
-    public void TryGetValue_returns_true_and_value_on_Some()
+    [Test]
+    public async Task TryGetValue_returns_true_and_value_on_Some()
     {
         var option = Option<int>.Some(42);
 
-        Assert.True(option.TryGetValue(out var value));
-        Assert.Equal(42, value);
+        await Assert.That(option.TryGetValue(out var value)).IsTrue();
+        await Assert.That(value).IsEqualTo(42);
     }
 
-    [Fact]
-    public void TryGetValue_returns_false_on_None()
+    [Test]
+    public async Task TryGetValue_returns_false_on_None()
     {
         var option = Option<int>.None;
 
-        Assert.False(option.TryGetValue(out _));
+        await Assert.That(option.TryGetValue(out _)).IsFalse();
     }
 
     // ── DefaultValue ─────────────────────────────────────────────────
 
-    [Fact]
-    public void DefaultValue_returns_value_on_Some()
+    [Test]
+    public async Task DefaultValue_returns_value_on_Some()
     {
         var option = Option<int>.Some(42);
 
-        Assert.Equal(42, option.DefaultValue(0));
+        await Assert.That(option.DefaultValue(0)).IsEqualTo(42);
     }
 
-    [Fact]
-    public void DefaultValue_returns_fallback_on_None()
+    [Test]
+    public async Task DefaultValue_returns_fallback_on_None()
     {
         var option = Option<int>.None;
 
-        Assert.Equal(-1, option.DefaultValue(-1));
+        await Assert.That(option.DefaultValue(-1)).IsEqualTo(-1);
     }
 
     // ── DefaultWith ──────────────────────────────────────────────────
 
-    [Fact]
-    public void DefaultWith_returns_value_on_Some()
+    [Test]
+    public async Task DefaultWith_returns_value_on_Some()
     {
         var option = Option<int>.Some(42);
 
-        Assert.Equal(42, option.DefaultWith(() => 0));
+        await Assert.That(option.DefaultWith(() => 0)).IsEqualTo(42);
     }
 
-    [Fact]
-    public void DefaultWith_returns_lazy_fallback_on_None()
+    [Test]
+    public async Task DefaultWith_returns_lazy_fallback_on_None()
     {
         var option = Option<int>.None;
 
-        Assert.Equal(-1, option.DefaultWith(() => -1));
+        await Assert.That(option.DefaultWith(() => -1)).IsEqualTo(-1);
     }
 
-    [Fact]
-    public void DefaultWith_does_not_evaluate_fallback_on_Some()
+    [Test]
+    public async Task DefaultWith_does_not_evaluate_fallback_on_Some()
     {
         var option = Option<int>.Some(42);
         var evaluated = false;
@@ -206,68 +206,68 @@ public sealed class OptionTests
             return 0;
         });
 
-        Assert.False(evaluated);
+        await Assert.That(evaluated).IsFalse();
     }
 
     // ── Map / Select (functor) ───────────────────────────────────────
 
-    [Fact]
-    public void Map_transforms_Some_value()
+    [Test]
+    public async Task Map_transforms_Some_value()
     {
         var option = Option<int>.Some(21).Map(v => v * 2);
 
-        Assert.True(option.IsSome);
-        Assert.Equal(42, option.Value);
+        await Assert.That(option.IsSome).IsTrue();
+        await Assert.That(option.Value).IsEqualTo(42);
     }
 
-    [Fact]
-    public void Map_propagates_None()
+    [Test]
+    public async Task Map_propagates_None()
     {
         var option = Option<int>.None.Map(v => v * 2);
 
-        Assert.True(option.IsNone);
+        await Assert.That(option.IsNone).IsTrue();
     }
 
-    [Fact]
-    public void Select_is_LINQ_alias_for_Map()
+    [Test]
+    public async Task Select_is_LINQ_alias_for_Map()
     {
         var option = from v in Option<int>.Some(21) select v * 2;
 
-        Assert.True(option.IsSome);
-        Assert.Equal(42, option.Value);
+        await Assert.That(option.IsSome).IsTrue();
+        await Assert.That(option.Value).IsEqualTo(42);
     }
 
-    [Fact]
-    public void Select_propagates_None()
+    [Test]
+    public async Task Select_propagates_None()
     {
         var option = from v in Option<int>.None select v * 2;
 
-        Assert.True(option.IsNone);
+        await Assert.That(option.IsNone).IsTrue();
     }
 
     // ── Bind (monad) ─────────────────────────────────────────────────
 
-    [Fact]
-    public void Bind_chains_Some_to_Some()
+    [Test]
+    public async Task Bind_chains_Some_to_Some()
     {
         var option = Option<int>.Some(21)
             .Bind(v => Option<int>.Some(v * 2));
 
-        Assert.True(option.IsSome);
-        Assert.Equal(42, option.Value);
+        await Assert.That(option.IsSome).IsTrue();
+        await Assert.That(option.Value).IsEqualTo(42);
     }
 
-    [Fact]
-    public void Bind_chains_Some_to_None()
+    [Test]
+    public async Task Bind_chains_Some_to_None()
     {
         var option = Option<int>.Some(21)
             .Bind(_ => Option<int>.None);
 
-        Assert.True(option.IsNone);
+        await Assert.That(option.IsNone).IsTrue();
     }
 
-    [Fact]
-    public void Bind_short_circuits_on_None()
+    [Test]
+    public async Task Bind_short_circuits_on_None()
     {
         var called = false;
         var option = Option<int>.None
@@ -277,26 +277,26 @@ public sealed class OptionTests
                 return Option<int>.Some(v);
             });
 
-        Assert.True(option.IsNone);
-        Assert.False(called);
+        await Assert.That(option.IsNone).IsTrue();
+        await Assert.That(called).IsFalse();
     }
 
     // ── SelectMany (LINQ multi-from) ─────────────────────────────────
 
-    [Fact]
-    public void SelectMany_supports_LINQ_query_syntax()
+    [Test]
+    public async Task SelectMany_supports_LINQ_query_syntax()
     {
         var option =
             from x in Option<int>.Some(10)
             from y in Option<int>.Some(32)
             select x + y;
 
-        Assert.True(option.IsSome);
-        Assert.Equal(42, option.Value);
+        await Assert.That(option.IsSome).IsTrue();
+        await Assert.That(option.Value).IsEqualTo(42);
     }
 
-    [Fact]
-    public void SelectMany_short_circuits_on_first_None()
+    [Test]
+    public async Task SelectMany_short_circuits_on_first_None()
     {
         var secondCalled = false;
 
@@ -305,23 +305,23 @@ public sealed class OptionTests
             from y in Invoke(() => { secondCalled = true; return Option<int>.Some(2); })
             select x + y;
 
-        Assert.True(option.IsNone);
-        Assert.False(secondCalled);
+        await Assert.That(option.IsNone).IsTrue();
+        await Assert.That(secondCalled).IsFalse();
     }
 
-    [Fact]
-    public void SelectMany_short_circuits_on_second_None()
+    [Test]
+    public async Task SelectMany_short_circuits_on_second_None()
     {
         var option =
             from x in Option<int>.Some(1)
             from y in Option<int>.None
             select x + y;
 
-        Assert.True(option.IsNone);
+        await Assert.That(option.IsNone).IsTrue();
     }
 
-    [Fact]
-    public void SelectMany_three_from_clauses()
+    [Test]
+    public async Task SelectMany_three_from_clauses()
     {
         var option =
             from a in Option<int>.Some(1)
@@ -329,93 +329,97 @@ public sealed class OptionTests
             from c in Option<int>.Some(3)
             select a + b + c;
 
-        Assert.True(option.IsSome);
-        Assert.Equal(6, option.Value);
+        await Assert.That(option.IsSome).IsTrue();
+        await Assert.That(option.Value).IsEqualTo(6);
     }
 
     // ── Where (filter) ───────────────────────────────────────────────
 
-    [Fact]
-    public void Where_retains_Some_when_predicate_passes()
+    [Test]
+    public async Task Where_retains_Some_when_predicate_passes()
     {
         var option = Option<int>.Some(42).Where(v => v > 10);
 
-        Assert.True(option.IsSome);
-        Assert.Equal(42, option.Value);
+        await Assert.That(option.IsSome).IsTrue();
+        await Assert.That(option.Value).IsEqualTo(42);
     }
 
-    [Fact]
-    public void Where_returns_None_when_predicate_fails()
+    [Test]
+    public async Task Where_returns_None_when_predicate_fails()
     {
         var option = Option<int>.Some(5).Where(v => v > 10);
 
-        Assert.True(option.IsNone);
+        await Assert.That(option.IsNone).IsTrue();
     }
 
-    [Fact]
-    public void Where_returns_None_on_None_input()
+    [Test]
+    public async Task Where_returns_None_on_None_input()
     {
         var option = Option<int>.None.Where(v => v > 10);
 
-        Assert.True(option.IsNone);
+        await Assert.That(option.IsNone).IsTrue();
     }
 
     // ── ToResult ─────────────────────────────────────────────────────
 
-    [Fact]
-    public void ToResult_converts_Some_to_Ok()
+    [Test]
+    public async Task ToResult_converts_Some_to_Ok()
     {
         var result = Option<int>.Some(42).ToResult("missing");
 
-        Assert.True(result.IsOk);
-        Assert.Equal(42, result.Value);
+        await Assert.That(result.IsOk).IsTrue();
+        await Assert.That(result.Value).IsEqualTo(42);
     }
 
-    [Fact]
-    public void ToResult_converts_None_to_Err()
+    [Test]
+    public async Task ToResult_converts_None_to_Err()
     {
         var result = Option<int>.None.ToResult("missing");
 
-        Assert.True(result.IsErr);
-        Assert.Equal("missing", result.Error);
+        await Assert.That(result.IsErr).IsTrue();
+        await Assert.That(result.Error).IsEqualTo("missing");
     }
 
     // ── Implicit conversion ──────────────────────────────────────────
 
-    [Fact]
-    public void Implicit_conversion_from_T_creates_Some()
+    [Test]
+    public async Task Implicit_conversion_from_T_creates_Some()
     {
         Option<int> option = 42;
 
-        Assert.True(option.IsSome);
-        Assert.Equal(42, option.Value);
+        await Assert.That(option.IsSome).IsTrue();
+        await Assert.That(option.Value).IsEqualTo(42);
     }
 
-    [Fact]
-    public void Implicit_conversion_works_in_method_return()
+    [Test]
+    public async Task Implicit_conversion_works_in_method_return()
     {
         static Option<string> GetName() => "Alice";
 
         var option = GetName();
 
-        Assert.True(option.IsSome);
-        Assert.Equal("Alice", option.Value);
+        await Assert.That(option.IsSome).IsTrue();
+        await Assert.That(option.Value).IsEqualTo("Alice");
     }
 
     // ── ToString ─────────────────────────────────────────────────────
 
-    [Fact]
-    public void ToString_Some_includes_value() =>
-        Assert.Equal("Some(42)", Option<int>.Some(42).ToString());
+    [Test]
+    public async Task ToString_Some_includes_value()
+    {
+        await Assert.That(Option<int>.Some(42).ToString()).IsEqualTo("Some(42)");
+    }
 
-    [Fact]
-    public void ToString_None_returns_None() =>
-        Assert.Equal("None", Option<int>.None.ToString());
+    [Test]
+    public async Task ToString_None_returns_None()
+    {
+        await Assert.That(Option<int>.None.ToString()).IsEqualTo("None");
+    }
 
     // ── Composition: Match + Map + Bind ──────────────────────────────
 
-    [Fact]
-    public void Full_pipeline_with_Match_extraction()
+    [Test]
+    public async Task Full_pipeline_with_Match_extraction()
     {
         var output = Option<int>.Some(10)
             .Map(v => v * 2)
@@ -426,11 +430,11 @@ public sealed class OptionTests
                 some: v => v,
                 none: () => "too small");
 
-        Assert.Equal("big: 20", output);
+        await Assert.That(output).IsEqualTo("big: 20");
     }
 
-    [Fact]
-    public void Full_pipeline_none_path()
+    [Test]
+    public async Task Full_pipeline_none_path()
     {
         var output = Option<int>.Some(5)
             .Map(v => v * 2)
@@ -441,51 +445,51 @@ public sealed class OptionTests
                 some: v => v,
                 none: () => "too small");
 
-        Assert.Equal("too small", output);
+        await Assert.That(output).IsEqualTo("too small");
     }
 
-    [Fact]
-    public void Where_into_Map_pipeline()
+    [Test]
+    public async Task Where_into_Map_pipeline()
     {
         var output = Option<int>.Some(42)
             .Where(v => v > 10)
             .Map(v => $"valid: {v}")
             .DefaultValue("invalid");
 
-        Assert.Equal("valid: 42", output);
+        await Assert.That(output).IsEqualTo("valid: 42");
     }
 
-    [Fact]
-    public void Where_filters_then_DefaultValue()
+    [Test]
+    public async Task Where_filters_then_DefaultValue()
     {
         var output = Option<int>.Some(5)
             .Where(v => v > 10)
             .Map(v => $"valid: {v}")
             .DefaultValue("invalid");
 
-        Assert.Equal("invalid", output);
+        await Assert.That(output).IsEqualTo("invalid");
     }
 
-    [Fact]
-    public void ToResult_integrates_with_Result_pipeline()
+    [Test]
+    public async Task ToResult_integrates_with_Result_pipeline()
     {
         var result = Option<int>.Some(42)
             .ToResult("not found")
             .Map(v => v * 2);
 
-        Assert.True(result.IsOk);
-        Assert.Equal(84, result.Value);
+        await Assert.That(result.IsOk).IsTrue();
+        await Assert.That(result.Value).IsEqualTo(84);
     }
 
-    [Fact]
-    public void ToResult_None_integrates_with_Result_pipeline()
+    [Test]
+    public async Task ToResult_None_integrates_with_Result_pipeline()
     {
         var result = Option<int>.None
             .ToResult("not found")
             .Map(v => v * 2);
 
-        Assert.True(result.IsErr);
-        Assert.Equal("not found", result.Error);
+        await Assert.That(result.IsErr).IsTrue();
+        await Assert.That(result.Error).IsEqualTo("not found");
     }
 
     // ── Helpers ───────────────────────────────────────────────────────
