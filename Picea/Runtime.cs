@@ -111,6 +111,12 @@ public static class InterpreterResult<TEvent>
         new(Result<TEvent[], PipelineError>.Ok(Array.Empty<TEvent>()));
 }
 
+internal static class ContractGuards
+{
+    public static T[] RequireNonNullArray<T>(T[]? values, [CallerArgumentExpression(nameof(values))] string? paramName = null) =>
+        values ?? throw new InvalidOperationException($"{paramName ?? "Array"} must not be null.");
+}
+
 /// <summary>
 /// The shared automaton runtime: a monadic left fold with Observer and Interpreter.
 /// </summary>
@@ -553,7 +559,10 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
                 return new ValueTask<Result<Unit, PipelineError>>(
                     Result<Unit, PipelineError>.Err(interpreterResult.Error));
 
-            return DispatchFeedbackEventsWithResult(interpreterResult.Value, cancellationToken, depth);
+            return DispatchFeedbackEventsWithResult(
+                ContractGuards.RequireNonNullArray(interpreterResult.Value),
+                cancellationToken,
+                depth);
         }
 
         return AwaitInterpreterThenDispatchWithResult(interpreterTask, cancellationToken, depth);
@@ -568,7 +577,10 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         if (interpreterResult.IsErr)
             return Result<Unit, PipelineError>.Err(interpreterResult.Error);
 
-        return await DispatchFeedbackEventsWithResult(interpreterResult.Value, cancellationToken, depth)
+        return await DispatchFeedbackEventsWithResult(
+                ContractGuards.RequireNonNullArray(interpreterResult.Value),
+                cancellationToken,
+                depth)
             .ConfigureAwait(false);
     }
 
@@ -576,6 +588,8 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         TEvent[] feedbackEvents,
         CancellationToken cancellationToken, int depth)
     {
+        feedbackEvents = ContractGuards.RequireNonNullArray(feedbackEvents);
+
         if (feedbackEvents.Length == 0)
             return PipelineResult.Ok;
 
@@ -788,9 +802,12 @@ public static class InterpreterExtensions
         };
 
     private static TEvent[] ConcatEvents<TEvent>(TEvent[] first, TEvent[] second) =>
-        first.Length == 0 ? second
-        : second.Length == 0 ? first
-        : [.. first, .. second];
+        ContractGuards.RequireNonNullArray(first) is var safeFirst
+        && ContractGuards.RequireNonNullArray(second) is var safeSecond
+            ? safeFirst.Length == 0 ? safeSecond
+            : safeSecond.Length == 0 ? safeFirst
+            : [.. safeFirst, .. safeSecond]
+            : throw new UnreachableException();
 
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     private static async ValueTask<Result<TEvent[], PipelineError>> AwaitSecondInterpreter<TEvent>(

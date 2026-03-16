@@ -402,6 +402,25 @@ public sealed class OptionTests
         await Assert.That(option.Value).IsEqualTo("Alice");
     }
 
+    [Test]
+    public async Task Some_null_reference_throws_ArgumentNullException()
+    {
+        var ex = await Assert.That(() => Option<string>.Some(null!)).ThrowsExactly<ArgumentNullException>();
+        await Assert.That(ex.ParamName).Contains("value");
+    }
+
+    [Test]
+    public async Task Implicit_conversion_of_null_reference_throws_ArgumentNullException()
+    {
+        var ex = await Assert.That(() =>
+        {
+            Option<string> option = (string)null!;
+            return option;
+        }).ThrowsExactly<ArgumentNullException>();
+
+        await Assert.That(ex.ParamName).Contains("value");
+    }
+
     // ── ToString ─────────────────────────────────────────────────────
 
     [Test]

@@ -34,6 +34,8 @@
 
 namespace Picea;
 
+using System.Runtime.CompilerServices;
+
 /// <summary>
 /// A discriminated union representing either a success value or an error.
 /// </summary>
@@ -102,7 +104,7 @@ public readonly struct Result<TSuccess, TError>
     /// Creates a successful result containing a value.
     /// </summary>
     public static Result<TSuccess, TError> Ok(TSuccess value) =>
-        new(true, value, default!);
+        new(true, RequireNonNull(value), default!);
 
     /// <summary>
     /// Creates a failed result containing an error.
@@ -237,6 +239,12 @@ public readonly struct Result<TSuccess, TError>
     /// <inheritdoc/>
     public override string ToString() =>
         _isOk ? $"Ok({_value})" : $"Err({_error})";
+
+    private static TSuccess RequireNonNull(TSuccess value, [CallerArgumentExpression(nameof(value))] string? paramName = null)
+    {
+        ArgumentNullException.ThrowIfNull(value, paramName);
+        return value;
+    }
 }
 
 /// <summary>

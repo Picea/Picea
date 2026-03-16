@@ -434,6 +434,18 @@ public class DeciderTests
             ThermostatEvent, ThermostatEffect, ThermostatError, Unit>.Start(default, ThermostatObservers.NoOp, ThermostatInterpreters.NoOp);
     }
 
+    private sealed class NullEventDecider : Decider<ThermostatState, ThermostatCommand, ThermostatEvent, ThermostatEffect, ThermostatError, Unit>
+    {
+        public static Result<ThermostatEvent[], ThermostatError> Decide(ThermostatState state, ThermostatCommand command) =>
+            Result<ThermostatEvent[], ThermostatError>.Ok((ThermostatEvent[])null!);
+
+        public static (ThermostatState State, ThermostatEffect Effect) Initialize(Unit parameters) =>
+            Thermostat.Initialize(parameters);
+
+        public static (ThermostatState State, ThermostatEffect Effect) Transition(ThermostatState state, ThermostatEvent @event) =>
+            Thermostat.Transition(state, @event);
+    }
+
     // =========================================================================
     // Concurrent Handle
     // =========================================================================
@@ -535,6 +547,19 @@ public class DeciderTests
         await Assert.That(result.Value.CurrentTemp).IsEqualTo(18m);
         await Assert.That(runtime.State.Heating).IsTrue();
         await Assert.That(runtime.Events).IsEmpty(); // No events tracked
+    }
+
+    [Test]
+    public async Task Handle_ThrowsWhenDeciderReturnsNullEventArray()
+    {
+        var runtime = await DecidingRuntime<NullEventDecider, ThermostatState, ThermostatCommand,
+            ThermostatEvent, ThermostatEffect, ThermostatError, Unit>.Start(
+                default, ThermostatObservers.NoOp, ThermostatInterpreters.NoOp);
+
+        var ex = await Assert.That(() => runtime.Handle(new ThermostatCommand.RecordReading(18m)).AsTask())
+            .ThrowsExactly<ArgumentNullException>();
+
+        await Assert.That(ex.ParamName).Contains("value");
     }
 
     // =========================================================================

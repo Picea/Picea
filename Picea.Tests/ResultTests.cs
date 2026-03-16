@@ -209,6 +209,25 @@ public sealed class ResultTests
         await Assert.That(result.Value).IsEqualTo("Alice");
     }
 
+    [Test]
+    public async Task Ok_null_reference_throws_ArgumentNullException()
+    {
+        var ex = await Assert.That(() => Result<string, int>.Ok(null!)).ThrowsExactly<ArgumentNullException>();
+        await Assert.That(ex.ParamName).Contains("value");
+    }
+
+    [Test]
+    public async Task Implicit_conversion_of_null_success_throws_ArgumentNullException()
+    {
+        var ex = await Assert.That(() =>
+        {
+            Result<string, int> result = (string)null!;
+            return result;
+        }).ThrowsExactly<ArgumentNullException>();
+
+        await Assert.That(ex.ParamName).Contains("value");
+    }
+
     // ── Map / Select (functor) ───────────────────────────────────────
 
     [Test]

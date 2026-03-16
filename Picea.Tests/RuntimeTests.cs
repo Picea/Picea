@@ -366,6 +366,22 @@ public class RuntimeTests
             .ThrowsExactly<ArgumentNullException>();
     }
 
+    [Test]
+    public async Task Dispatch_ThrowsWhenInterpreterReturnsNullEventArray()
+    {
+        Interpreter<ThermostatEffect, ThermostatEvent> invalidInterpreter =
+            _ => new ValueTask<Result<ThermostatEvent[], PipelineError>>(
+                Result<ThermostatEvent[], PipelineError>.Ok((ThermostatEvent[])null!));
+
+        var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
+            new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, invalidInterpreter);
+
+        var ex = await Assert.That(() => runtime.Dispatch(new ThermostatEvent.HeaterTurnedOn()).AsTask())
+            .ThrowsExactly<ArgumentNullException>();
+
+        await Assert.That(ex.ParamName).Contains("value");
+    }
+
     // =========================================================================
     // Unserialized (threadSafe=false)
     // =========================================================================
