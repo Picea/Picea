@@ -126,6 +126,8 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     private readonly Observer<TState, TEvent, TEffect> _observer;
     private readonly Interpreter<TEffect, TEvent> _interpreter;
     private readonly List<TEvent>? _events;
+    private TEvent[] _eventsSnapshot = Array.Empty<TEvent>();
+    private bool _eventsSnapshotDirty;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _snapshotLock = new();
     private readonly bool _threadSafe;
@@ -144,7 +146,18 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         get
         {
             lock (_snapshotLock)
-                return _events is null ? Array.Empty<TEvent>() : _events.ToArray();
+            {
+                if (_events is null)
+                    return Array.Empty<TEvent>();
+
+                if (_eventsSnapshotDirty)
+                {
+                    _eventsSnapshot = _events.Count == 0 ? Array.Empty<TEvent>() : _events.ToArray();
+                    _eventsSnapshotDirty = false;
+                }
+
+                return _eventsSnapshot;
+            }
         }
     }
 
@@ -490,6 +503,8 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         lock (_snapshotLock)
         {
             _events?.Add(@event);
+            if (_events is not null)
+                _eventsSnapshotDirty = true;
             (newState, effect) = TAutomaton.Transition(_state, @event);
             _state = newState;
         }

@@ -577,13 +577,11 @@ public class RuntimeTests
             new MutableBoxState(0, 0), MutableStateObservers.NoOp, MutableStateInterpreters.NoOp,
             threadSafe: true);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-
         var dispatchTask = Task.Run(async () =>
         {
             for (var i = 0; i < 2_000; i++)
                 await runtime.Dispatch(new MutableBoxEvent.SetPair(i));
-        }, cts.Token);
+        });
 
         var readTask = Task.Run(async () =>
         {
@@ -597,9 +595,9 @@ public class RuntimeTests
             }
 
             return true;
-        }, cts.Token);
+        });
 
-        await Task.WhenAll(dispatchTask, readTask);
+        await Task.WhenAll(dispatchTask, readTask).WaitAsync(TimeSpan.FromSeconds(5));
 
         await Assert.That(readTask.Result).IsTrue();
     }
@@ -609,7 +607,7 @@ public class RuntimeTests
     // =========================================================================
 
     [Test]
-    public async Task Dispose_CanBeCalledMultipleTimes()
+    public Task Dispose_CanBeCalledMultipleTimes()
     {
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
             new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, ThermostatInterpreters.NoOp);
@@ -617,7 +615,7 @@ public class RuntimeTests
         runtime.Dispose();
         runtime.Dispose(); // Should not throw
 
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     [Test]
