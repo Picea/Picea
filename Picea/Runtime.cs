@@ -27,8 +27,8 @@
 // Thread safety:
 //     All public entry points (Dispatch, InterpretEffect, Start) are serialized
 //     via a SemaphoreSlim. Concurrent callers are queued, never interleaved.
-//     Reading State or Events while a Dispatch is in-flight is safe but may
-//     observe intermediate values.
+//     Reading State or Events while a Dispatch is in-flight is synchronized
+//     with transitions and returns a consistent snapshot.
 //
 // Feedback depth:
 //     Interpreter feedback loops (effect → events → effect → …) are bounded
@@ -127,10 +127,26 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     private readonly Interpreter<TEffect, TEvent> _interpreter;
     private readonly List<TEvent>? _events;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly object _snapshotLock = new();
     private readonly bool _threadSafe;
 
-    public TState State => _state;
-    public IReadOnlyList<TEvent> Events => _events ?? (IReadOnlyList<TEvent>)Array.Empty<TEvent>();
+    public TState State
+    {
+        get
+        {
+            lock (_snapshotLock)
+                return _state;
+        }
+    }
+
+    public IReadOnlyList<TEvent> Events
+    {
+        get
+        {
+            lock (_snapshotLock)
+                return _events is null ? Array.Empty<TEvent>() : _events.ToArray();
+        }
+    }
 
     internal SemaphoreSlim Gate => _gate;
     internal bool IsThreadSafe => _threadSafe;
@@ -444,12 +460,16 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         {
             _gate.Wait();
             try
-            { _state = state; }
+            {
+                lock (_snapshotLock)
+                    _state = state;
+            }
             finally { _gate.Release(); }
         }
         else
         {
-            _state = state;
+            lock (_snapshotLock)
+                _state = state;
         }
     }
 
@@ -464,12 +484,17 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        _events?.Add(@event);
+        TState newState;
+        TEffect effect;
 
-        var (newState, effect) = TAutomaton.Transition(_state, @event);
-        _state = newState;
+        lock (_snapshotLock)
+        {
+            _events?.Add(@event);
+            (newState, effect) = TAutomaton.Transition(_state, @event);
+            _state = newState;
+        }
 
-        var observerTask = _observer(_state, @event, effect);
+        var observerTask = _observer(newState, @event, effect);
         if (observerTask.IsCompletedSuccessfully)
         {
             var observerResult = observerTask.Result;

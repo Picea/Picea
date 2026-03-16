@@ -145,6 +145,23 @@ public class RuntimeTests
     }
 
     [Test]
+    public async Task Events_ReturnSnapshot_NotLiveBackingCollection()
+    {
+        var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
+            new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, ThermostatInterpreters.NoOp);
+
+        await runtime.Dispatch(new ThermostatEvent.TemperatureRecorded(18m));
+
+        var snapshot = runtime.Events;
+
+        await runtime.Dispatch(new ThermostatEvent.HeaterTurnedOn());
+
+        await Assert.That(snapshot.Count).IsEqualTo(1);
+        await Assert.That(snapshot[0]).IsTypeOf<ThermostatEvent.TemperatureRecorded>();
+        await Assert.That(runtime.Events.Count).IsEqualTo(2);
+    }
+
+    [Test]
     public async Task Start_CreatesRuntimeAndInterpretsInitEffect()
     {
         var runtime = await AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>
@@ -553,6 +570,40 @@ public class RuntimeTests
         await Assert.That(runtime.State.CurrentTemp).IsEqualTo(99m);
     }
 
+    [Test]
+    public async Task State_ReadsDoNotExposeHalfMutatedReferenceState()
+    {
+        var runtime = new AutomatonRuntime<MutableStateAutomaton, MutableBoxState, MutableBoxEvent, MutableBoxEffect, Unit>(
+            new MutableBoxState(0, 0), MutableStateObservers.NoOp, MutableStateInterpreters.NoOp,
+            threadSafe: true);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        var dispatchTask = Task.Run(async () =>
+        {
+            for (var i = 0; i < 2_000; i++)
+                await runtime.Dispatch(new MutableBoxEvent.SetPair(i));
+        }, cts.Token);
+
+        var readTask = Task.Run(async () =>
+        {
+            for (var i = 0; i < 50_000; i++)
+            {
+                var snapshot = runtime.State;
+                if (snapshot.Left != snapshot.Right)
+                    return false;
+
+                await Task.Yield();
+            }
+
+            return true;
+        }, cts.Token);
+
+        await Task.WhenAll(dispatchTask, readTask);
+
+        await Assert.That(readTask.Result).IsTrue();
+    }
+
     // =========================================================================
     // IDisposable
     // =========================================================================
@@ -577,6 +628,56 @@ public class RuntimeTests
 
         await runtime.Dispatch(new ThermostatEvent.TemperatureRecorded(18m));
         await Assert.That(runtime.State.CurrentTemp).IsEqualTo(18m);
+    }
+
+    private sealed class MutableBoxState
+    {
+        public int Left;
+        public int Right;
+
+        public MutableBoxState(int left, int right)
+        {
+            Left = left;
+            Right = right;
+        }
+    }
+
+    private abstract record MutableBoxEvent
+    {
+        public sealed record SetPair(int Value) : MutableBoxEvent;
+    }
+
+    private readonly record struct MutableBoxEffect;
+
+    private sealed class MutableStateAutomaton : Automaton<MutableBoxState, MutableBoxEvent, MutableBoxEffect, Unit>
+    {
+        public static (MutableBoxState State, MutableBoxEffect Effect) Initialize(Unit _) =>
+            (new MutableBoxState(0, 0), default);
+
+        public static (MutableBoxState State, MutableBoxEffect Effect) Transition(MutableBoxState state, MutableBoxEvent @event)
+        {
+            var next = new MutableBoxState(state.Left, state.Right);
+            if (@event is MutableBoxEvent.SetPair setPair)
+            {
+                next.Left = setPair.Value;
+                Thread.SpinWait(10_000);
+                next.Right = setPair.Value;
+            }
+
+            return (next, default);
+        }
+    }
+
+    private static class MutableStateObservers
+    {
+        public static readonly Observer<MutableBoxState, MutableBoxEvent, MutableBoxEffect> NoOp =
+            (_, _, _) => PipelineResult.Ok;
+    }
+
+    private static class MutableStateInterpreters
+    {
+        public static readonly Interpreter<MutableBoxEffect, MutableBoxEvent> NoOp =
+            _ => InterpreterResult<MutableBoxEvent>.Empty;
     }
 
     // =========================================================================
