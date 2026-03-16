@@ -99,7 +99,10 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
             var decided = TDecider.Decide(_core.State, command);
             if (decided.IsOk)
             {
-                return DispatchEventsAndReturnOkUnserialized(decided.Value, cancellationToken, activity);
+                return DispatchEventsAndReturnOkUnserialized(
+                    ContractGuards.RequireNonNullArray(decided.Value),
+                    cancellationToken,
+                    activity);
             }
             else
             {
@@ -200,7 +203,10 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
             var decided = TDecider.Decide(_core.State, command);
             if (decided.IsOk)
             {
-                return DispatchEventsAndReturnOk(decided.Value, cancellationToken, activity);
+                return DispatchEventsAndReturnOk(
+                    ContractGuards.RequireNonNullArray(decided.Value),
+                    cancellationToken,
+                    activity);
             }
             else
             {
@@ -304,7 +310,7 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
             var decided = TDecider.Decide(_core.State, command);
             if (decided.IsOk)
             {
-                var events = decided.Value;
+                var events = ContractGuards.RequireNonNullArray(decided.Value);
                 for (var i = 0; i < events.Length; i++)
                 {
                     var result = await _core.DispatchUnlocked(events[i], cancellationToken).ConfigureAwait(false);

@@ -15,6 +15,8 @@
 
 namespace Picea;
 
+using System.Runtime.CompilerServices;
+
 /// <summary>
 /// A discriminated union representing either a value (<c>Some</c>) or no value (<c>None</c>).
 /// </summary>
@@ -27,7 +29,7 @@ public readonly struct Option<T>
     private Option(T value)
     {
         _isSome = true;
-        _value = value;
+        _value = RequireNonNull(value);
     }
 
     /// <summary>
@@ -156,6 +158,12 @@ public readonly struct Option<T>
     /// <inheritdoc/>
     public override string ToString() =>
         _isSome ? $"Some({_value})" : "None";
+
+    private static T RequireNonNull(T value, [CallerArgumentExpression(nameof(value))] string? paramName = null)
+    {
+        ArgumentNullException.ThrowIfNull(value, paramName);
+        return value;
+    }
 }
 
 /// <summary>
