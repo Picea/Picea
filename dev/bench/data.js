@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773660362860,
+  "lastUpdate": 1773663628081,
   "repoUrl": "https://github.com/Picea/Picea",
   "entries": {
     "Picea Benchmarks": [
@@ -804,6 +804,144 @@ window.BENCHMARK_DATA = {
             "value": 1547.04,
             "unit": "ns",
             "range": "± 47.54951804873175"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "MCGPPeters@users.noreply.github.com",
+            "name": "Maurice CGP Peters",
+            "username": "MCGPPeters"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d4a487e76425f19643708b59d7941e944034439f",
+          "message": "chore: address copilot review feedback (#17)",
+          "timestamp": "2026-03-16T13:19:40+01:00",
+          "tree_id": "d5653fc97e2e0e28038b268815718c1ed3d0f526",
+          "url": "https://github.com/Picea/Picea/commit/d4a487e76425f19643708b59d7941e944034439f"
+        },
+        "date": 1773663627704,
+        "tool": "benchmarkdotnet",
+        "benches": [
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Dispatch_Single",
+            "value": 6427.043010752688,
+            "unit": "ns",
+            "range": "± 499.97127991381956"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Dispatch_WithObserver",
+            "value": 6784.538461538462,
+            "unit": "ns",
+            "range": "± 108.60449298917563"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Dispatch_Batch_100",
+            "value": 46276.88043478261,
+            "unit": "ns",
+            "range": "± 2599.802612297653"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Dispatch_WithFeedback",
+            "value": 8503.67441860465,
+            "unit": "ns",
+            "range": "± 317.2019576690199"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Dispatch_ComposedObserver",
+            "value": 6319.239583333333,
+            "unit": "ns",
+            "range": "± 632.1800000964361"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Handle_Accept",
+            "value": 6723.752688172043,
+            "unit": "ns",
+            "range": "± 561.1593909800374"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Handle_Reject",
+            "value": 3779.7820512820513,
+            "unit": "ns",
+            "range": "± 138.09682886674094"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Safe_NoTrack_Dispatch_Single",
+            "value": 4687.448717948718,
+            "unit": "ns",
+            "range": "± 171.56983367498046"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Safe_NoTrack_Dispatch_WithFeedback",
+            "value": 6698.581395348837,
+            "unit": "ns",
+            "range": "± 238.06143990456596"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Safe_NoTrack_Handle_Accept",
+            "value": 5658.615384615385,
+            "unit": "ns",
+            "range": "± 81.68388096960385"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Safe_NoTrack_Handle_Reject",
+            "value": 4329.395833333333,
+            "unit": "ns",
+            "range": "± 488.19613140550194"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Lean_Dispatch_Single",
+            "value": 4692.020833333333,
+            "unit": "ns",
+            "range": "± 575.4557915100482"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Lean_Dispatch_WithFeedback",
+            "value": 6278.928571428572,
+            "unit": "ns",
+            "range": "± 103.08824769675161"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Lean_Handle_Accept",
+            "value": 5229.681818181818,
+            "unit": "ns",
+            "range": "± 130.68013889378412"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Lean_Handle_Reject",
+            "value": 3619.4574468085107,
+            "unit": "ns",
+            "range": "± 433.85150982606643"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Rec_Lean_Dispatch_Single",
+            "value": 2387.3571428571427,
+            "unit": "ns",
+            "range": "± 307.8171903588432"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Rec_Lean_Dispatch_WithFeedback",
+            "value": 5457.533333333334,
+            "unit": "ns",
+            "range": "± 78.2266548166897"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Rec_Lean_Handle_Accept",
+            "value": 4578.692307692308,
+            "unit": "ns",
+            "range": "± 58.9100792385941"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Rec_Lean_Handle_Reject",
+            "value": 1701.0263157894738,
+            "unit": "ns",
+            "range": "± 98.93121835352217"
           }
         ]
       }
