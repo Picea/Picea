@@ -371,7 +371,7 @@ public class RuntimeTests
     {
         Interpreter<ThermostatEffect, ThermostatEvent> invalidInterpreter =
             _ => new ValueTask<Result<ThermostatEvent[], PipelineError>>(
-                Result<ThermostatEvent[], PipelineError>.Ok((ThermostatEvent[])null!));
+                Result<ThermostatEvent[], PipelineError>.Ok(null!));
 
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
             new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, invalidInterpreter);
