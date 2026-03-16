@@ -232,39 +232,27 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
     private ValueTask<Result<TState, TError>> DispatchEventsAndReturnOk(
         TEvent[] events, CancellationToken cancellationToken, Activity? activity)
     {
-        try
+        for (var i = 0; i < events.Length; i++)
         {
-            for (var i = 0; i < events.Length; i++)
+            var dispatchTask = _core.DispatchUnlocked(events[i], cancellationToken);
+            if (!dispatchTask.IsCompletedSuccessfully)
+                return AwaitRemainingEventsAndReturnOk(dispatchTask, events, i + 1, cancellationToken, activity);
+
+            var dispatchResult = dispatchTask.Result;
+            if (dispatchResult.IsErr)
             {
-                var dispatchTask = _core.DispatchUnlocked(events[i], cancellationToken);
-                if (!dispatchTask.IsCompletedSuccessfully)
-                    return AwaitRemainingEventsAndReturnOk(dispatchTask, events, i + 1, cancellationToken, activity);
-
-                var dispatchResult = dispatchTask.Result;
-                if (dispatchResult.IsErr)
-                {
-                    _core.Gate.Release();
-                    throw new InvalidOperationException(
-                        $"Pipeline error during dispatch: {dispatchResult.Error}",
-                        dispatchResult.Error.Exception);
-                }
+                throw new InvalidOperationException(
+                    $"Pipeline error during dispatch: {dispatchResult.Error}",
+                    dispatchResult.Error.Exception);
             }
+        }
 
-            activity?.SetTag("automaton.result", "ok");
-            activity?.SetStatus(ActivityStatusCode.Ok);
-            activity?.Dispose();
-            _core.Gate.Release();
-            return new ValueTask<Result<TState, TError>>(
-                Result<TState, TError>.Ok(_core.State));
-        }
-        catch (Exception ex)
-        {
-            if (ex is not OperationCanceledException)
-                activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.Dispose();
-            _core.Gate.Release();
-            throw;
-        }
+        activity?.SetTag("automaton.result", "ok");
+        activity?.SetStatus(ActivityStatusCode.Ok);
+        activity?.Dispose();
+        _core.Gate.Release();
+        return new ValueTask<Result<TState, TError>>(
+            Result<TState, TError>.Ok(_core.State));
     }
 
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]

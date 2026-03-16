@@ -208,6 +208,65 @@ public class DeciderTests
     }
 
     [Test]
+    public async Task Handle_PipelineFailure_ReleasesGateExactlyOnce()
+    {
+        var blockObserver = false;
+        var blockStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowBlockToFinish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var blockSignalSent = false;
+
+        Observer<ThermostatState, ThermostatEvent, ThermostatEffect> observer = (_, _, _) =>
+        {
+            if (blockObserver)
+            {
+                if (!blockSignalSent)
+                {
+                    blockSignalSent = true;
+                    blockStarted.SetResult();
+                }
+                return WaitForRelease();
+            }
+
+            return new ValueTask<Result<Unit, PipelineError>>(
+                Result<Unit, PipelineError>.Err(new PipelineError("boom", "test")));
+        };
+
+        async ValueTask<Result<Unit, PipelineError>> WaitForRelease()
+        {
+            await allowBlockToFinish.Task;
+            return Result<Unit, PipelineError>.Ok(Unit.Value);
+        }
+
+        var runtime = await DecidingRuntime<Thermostat, ThermostatState, ThermostatCommand,
+            ThermostatEvent, ThermostatEffect, ThermostatError, Unit>.Start(default, observer, ThermostatInterpreters.NoOp);
+
+        var failure = await Assert.That(() => runtime.Handle(new ThermostatCommand.RecordReading(18m)).AsTask())
+            .ThrowsExactly<InvalidOperationException>();
+
+        await Assert.That(failure.Message).Contains("Pipeline error during dispatch");
+
+        blockObserver = true;
+        var blockedHandle = runtime.Handle(new ThermostatCommand.RecordReading(18m)).AsTask();
+        await blockStarted.Task;
+
+        var thirdHandleCompleted = false;
+        var thirdHandle = Task.Run(async () =>
+        {
+            await runtime.Handle(new ThermostatCommand.RecordReading(18m));
+            thirdHandleCompleted = true;
+        });
+
+        await Task.Delay(50);
+        await Assert.That(thirdHandleCompleted).IsFalse().Because("the gate should still allow only one in-flight handle after a failure");
+
+        allowBlockToFinish.SetResult();
+        await blockedHandle;
+        await thirdHandle;
+
+        await Assert.That(thirdHandleCompleted).IsTrue();
+    }
+
+    [Test]
     public async Task IsTerminal_InitiallyFalse_TrueAfterShutdown()
     {
         var runtime = await CreateRuntime();
