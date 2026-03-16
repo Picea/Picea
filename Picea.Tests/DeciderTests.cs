@@ -210,20 +210,15 @@ public class DeciderTests
     [Test]
     public async Task Handle_PipelineFailure_ReleasesGateExactlyOnce()
     {
-        var blockObserver = false;
+        var blockObserver = 0;
         var blockStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var allowBlockToFinish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var blockSignalSent = false;
 
         Observer<ThermostatState, ThermostatEvent, ThermostatEffect> observer = (_, _, _) =>
         {
-            if (blockObserver)
+            if (Volatile.Read(ref blockObserver) == 1)
             {
-                if (!blockSignalSent)
-                {
-                    blockSignalSent = true;
-                    blockStarted.SetResult();
-                }
+                blockStarted.TrySetResult();
                 return WaitForRelease();
             }
 
@@ -245,25 +240,26 @@ public class DeciderTests
 
         await Assert.That(failure.Message).Contains("Pipeline error during dispatch");
 
-        blockObserver = true;
+        Volatile.Write(ref blockObserver, 1);
         var blockedHandle = runtime.Handle(new ThermostatCommand.RecordReading(18m)).AsTask();
         await blockStarted.Task;
 
-        var thirdHandleCompleted = false;
+        var thirdHandleStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var thirdHandle = Task.Run(async () =>
         {
-            await runtime.Handle(new ThermostatCommand.RecordReading(18m));
-            thirdHandleCompleted = true;
+            thirdHandleStarted.TrySetResult();
+            return await runtime.Handle(new ThermostatCommand.SetTarget(50m));
         });
 
-        await Task.Delay(50);
-        await Assert.That(thirdHandleCompleted).IsFalse().Because("the gate should still allow only one in-flight handle after a failure");
+        await thirdHandleStarted.Task;
+        await Task.Yield();
+        await Assert.That(thirdHandle.IsCompleted).IsFalse().Because("the gate should still allow only one in-flight handle after a failure");
 
         allowBlockToFinish.SetResult();
         await blockedHandle;
-        await thirdHandle;
+        var thirdResult = await thirdHandle;
 
-        await Assert.That(thirdHandleCompleted).IsTrue();
+        await Assert.That(thirdResult.IsErr).IsTrue();
     }
 
     [Test]
