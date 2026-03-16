@@ -18,10 +18,10 @@ jobs:
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '10.0.103'
 
       - name: Install GitVersioning
-        run: dotnet tool install --global nbgv
+        run: dotnet tool install --global nbgv --version 3.9.50
 
       - name: Set version
         id: version
@@ -37,12 +37,13 @@ jobs:
         run: |
           echo "🔍 Scanning for vulnerable packages..."
           dotnet list package --vulnerable --include-transitive 2>&1 | tee vulnerability-report.txt
+
           if grep -qi "critical\|high" vulnerability-report.txt; then
-            echo "⚠️  WARNING: Critical or High severity vulnerabilities detected!"
+            echo "❌ Critical or High severity vulnerabilities detected!"
+            exit 1
           else
             echo "✅ No critical or high severity vulnerabilities found"
           fi
-        continue-on-error: true
 
       - name: Build
         run: dotnet build --no-restore
