@@ -57,22 +57,16 @@ Definitions of terms used throughout the Picea documentation.
 ## Decider Terms
 
 **Decider**
-: An Automaton extended with a staged command pipeline. Adds `Validate`, `Authorize<TAuthorizationContext>`, `Decide`, and `IsTerminal` to the kernel interface. See [The Decider](the-decider.md).
+: An Automaton extended with command validation. Adds `Decide` and `IsTerminal` to the kernel interface. See [The Decider](the-decider.md).
 
 **Command**
-: User intent — what someone wants to do. First validated by `Validate`, then authorized by `Authorize`, before `Decide` can produce events.
-
-**Validated**
-: The output of the feasibility stage: `Validated<TCommand, TError> = Valid(command) | Invalid(error)`.
-
-**Authorize**
-: The pure permission stage `(State × Validated<Command, Error> × AuthContext) → Result<Unit, Error>`.
+: User intent — what someone wants to do. Validated by `Decide` before producing events.
 
 **Decide**
-: The pure decision stage `(State × Validated<Command, Error>) → Result<Event[], Error>` that produces events or rejects with error.
+: The pure function `(State × Command) → Result<Event[], Error>` that validates commands against current state.
 
 **Handle**
-: The `DecidingRuntime.Handle(command, ...)` method that runs `Validate → Authorize → Decide`, then dispatches resulting events. Atomic — the full operation runs under a single lock.
+: The `DecidingRuntime.Handle(command)` method that calls Decide, then dispatches resulting events. Atomic — the full operation runs under a single lock.
 
 **IsTerminal**
 : A function `State → bool` that indicates whether the automaton has reached a final state. Defaults to `false`.

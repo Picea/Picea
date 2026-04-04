@@ -99,55 +99,47 @@ public class Counter
         (new CounterState(0), new CounterEffect.None());
 
     /// <summary>
-    /// Stage 1 — Validates a counter command against the current state.
-    /// Rejects commands that would violate the [0, <see cref="MaxCount"/>] invariant
-    /// or reset an already-zero counter.
+    /// Validates a command against the current state, producing events or an error.
     /// </summary>
-    public static Validated<CounterCommand, CounterError> Validate(
+    /// <remarks>
+    /// This is a pure function: given the same state and command, it always
+    /// returns the same result. Validation rules:
+    /// <list type="bullet">
+    ///   <item>Count must remain in [0, <see cref="MaxCount"/>]</item>
+    ///   <item>Reset is rejected when count is already zero</item>
+    /// </list>
+    /// </remarks>
+    public static Result<CounterEvent[], CounterError> Decide(
         CounterState state,
         CounterCommand command) =>
         command switch
         {
             CounterCommand.Add(var amount) when state.Count + amount > MaxCount =>
-                new Validated<CounterCommand, CounterError>.Invalid(
-                    new CounterError.Overflow(state.Count, amount, MaxCount)),
+                Result<CounterEvent[], CounterError>
+                    .Err(new CounterError.Overflow(state.Count, amount, MaxCount)),
 
             CounterCommand.Add(var amount) when state.Count + amount < 0 =>
-                new Validated<CounterCommand, CounterError>.Invalid(
-                    new CounterError.Underflow(state.Count, amount)),
+                Result<CounterEvent[], CounterError>
+                    .Err(new CounterError.Underflow(state.Count, amount)),
+
+            CounterCommand.Add(var amount) when amount >= 0 =>
+                Result<CounterEvent[], CounterError>
+                    .Ok(Enumerable.Repeat<CounterEvent>(new CounterEvent.Increment(), amount).ToArray()),
+
+            CounterCommand.Add(var amount) =>
+                Result<CounterEvent[], CounterError>
+                    .Ok(Enumerable.Repeat<CounterEvent>(new CounterEvent.Decrement(), Math.Abs(amount)).ToArray()),
 
             CounterCommand.Reset when state.Count is 0 =>
-                new Validated<CounterCommand, CounterError>.Invalid(
-                    new CounterError.AlreadyAtZero()),
+                Result<CounterEvent[], CounterError>
+                    .Err(new CounterError.AlreadyAtZero()),
 
-            _ => new Validated<CounterCommand, CounterError>.Valid(command)
+            CounterCommand.Reset =>
+                Result<CounterEvent[], CounterError>
+                    .Ok([new CounterEvent.Reset()]),
+
+            _ => throw new UnreachableException()
         };
-
-    /// <summary>
-    /// Stage 3 — Produces counter events from a validated command.
-    /// Pre: command has passed <see cref="Validate"/> — all invariants are guaranteed to hold.
-    /// </summary>
-    public static Result<CounterEvent[], CounterError> Decide(
-        CounterState state,
-        Validated<CounterCommand, CounterError> validated) =>
-        validated is not Validated<CounterCommand, CounterError>.Valid(var command)
-            ? throw new UnreachableException()
-            : command switch
-            {
-                CounterCommand.Add(var amount) when amount >= 0 =>
-                    Result<CounterEvent[], CounterError>
-                        .Ok(Enumerable.Repeat<CounterEvent>(new CounterEvent.Increment(), amount).ToArray()),
-
-                CounterCommand.Add(var amount) =>
-                    Result<CounterEvent[], CounterError>
-                        .Ok(Enumerable.Repeat<CounterEvent>(new CounterEvent.Decrement(), Math.Abs(amount)).ToArray()),
-
-                CounterCommand.Reset =>
-                    Result<CounterEvent[], CounterError>
-                        .Ok([new CounterEvent.Reset()]),
-
-                _ => throw new UnreachableException()
-            };
 
     /// <summary>
     /// Pure transition: given state and event, produce new state and effect.

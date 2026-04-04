@@ -37,7 +37,7 @@ public sealed class ResultTests
         var result = Result<int, string>.Err("nope");
 
         var ex = await Assert.That(() => result.Value).ThrowsExactly<InvalidOperationException>();
-        await Assert.That(ex!.Message).Contains("Err");
+        await Assert.That(ex.Message).Contains("Err");
     }
 
     [Test]
@@ -46,7 +46,7 @@ public sealed class ResultTests
         var result = Result<int, string>.Ok(1);
 
         var ex = await Assert.That(() => result.Error).ThrowsExactly<InvalidOperationException>();
-        await Assert.That(ex!.Message).Contains("Ok");
+        await Assert.That(ex.Message).Contains("Ok");
     }
 
     // ── Match (catamorphism) ──────────────────────────────────────────
@@ -213,7 +213,7 @@ public sealed class ResultTests
     public async Task Ok_null_reference_throws_ArgumentNullException()
     {
         var ex = await Assert.That(() => Result<string, int>.Ok(null!)).ThrowsExactly<ArgumentNullException>();
-        await Assert.That(ex!.ParamName).Contains("value");
+        await Assert.That(ex.ParamName).Contains("value");
     }
 
     [Test]
@@ -221,11 +221,11 @@ public sealed class ResultTests
     {
         var ex = await Assert.That(() =>
         {
-            Result<string, int> result = null!;
+            Result<string, int> result = (string)null!;
             return result;
         }).ThrowsExactly<ArgumentNullException>();
 
-        await Assert.That(ex!.ParamName).Contains("value");
+        await Assert.That(ex.ParamName).Contains("value");
     }
 
     // ── Map / Select (functor) ───────────────────────────────────────

@@ -6,23 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 via [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning).
 
-## [1.0.0-rc.3] — 2026-04-04
-
-### Added
-
-- **Decider staged pipeline model**: `Validate -> Authorize(auth-context) -> Decide`
-- **Authorization context support**: `Authorize<TAuthorizationContext>(...)` and `Handle(command, authorizationContext, cancellationToken)` overload
-- **Composition law coverage**: `DeciderComposition` law/composition tests
-
-### Changed
-
-- **Tracing**: Added explicit `automaton.pipeline.stage = "decide"` tagging on decide rejection branches
-- **Documentation**: End-to-end Decider docs alignment across reference, concepts, glossary, testing guide, tutorial, and ADR-004
-
-### Fixed
-
-- **Tracing test stability**: `Dispatch_EmitsTracingSpan` now filters by expected event tag to avoid cross-test span pickup in parallel runs
-
 ## [1.0.0-rc.2] — 2026-03-13
 
 ### Added
@@ -65,4 +48,3 @@ This release is the extraction of the kernel from [MCGPPeters/Automaton](https:/
 
 [1.0.0-rc.2]: https://github.com/picea/picea/releases/tag/v1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/picea/picea/releases/tag/v1.0.0-rc.1
-[1.0.0-rc.3]: https://github.com/picea/picea/releases/tag/v1.0.0-rc.3

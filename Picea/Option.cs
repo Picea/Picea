@@ -13,10 +13,10 @@
 //     Match       : (T → R) × (() → R) → Option<T> → R               (catamorphism)
 // =============================================================================
 
+namespace Picea;
 
 using System.Runtime.CompilerServices;
 
-namespace Picea;
 /// <summary>
 /// A discriminated union representing either a value (<c>Some</c>) or no value (<c>None</c>).
 /// </summary>

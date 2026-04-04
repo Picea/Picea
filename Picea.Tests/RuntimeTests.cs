@@ -260,8 +260,8 @@ public class RuntimeTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        await Assert.That(async () => await AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>
-            .Start(default, ThermostatObservers.NoOp, ThermostatInterpreters.NoOp, cancellationToken: cts.Token))
+        await Assert.That(() => AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>
+                .Start(default, ThermostatObservers.NoOp, ThermostatInterpreters.NoOp, cancellationToken: cts.Token).AsTask())
             .Throws<OperationCanceledException>();
     }
 
@@ -331,10 +331,17 @@ public class RuntimeTests
         var ex = await Assert.That(() => runtime.Dispatch(new ThermostatEvent.AlertRaised("test")).AsTask())
             .ThrowsExactly<InvalidOperationException>();
 
-        await Assert.That(ex!.Message).Contains("maximum depth");
-        await Assert.That(ex!.Message).Contains(
+        await Assert.That(ex.Message).Contains("maximum depth");
+        await Assert.That(ex.Message).Contains(
             AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>
                 .MaxFeedbackDepth.ToString());
+    }
+
+    [Test]
+    public async Task MaxFeedbackDepth_Is64()
+    {
+        await Assert.That(AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>.MaxFeedbackDepth)
+            .IsEqualTo(64);
     }
 
     // =========================================================================
@@ -364,7 +371,7 @@ public class RuntimeTests
     {
         Interpreter<ThermostatEffect, ThermostatEvent> invalidInterpreter =
             _ => new ValueTask<Result<ThermostatEvent[], PipelineError>>(
-                Result<ThermostatEvent[], PipelineError>.Ok(null!));
+                Result<ThermostatEvent[], PipelineError>.Ok((ThermostatEvent[])null!));
 
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
             new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, invalidInterpreter);
@@ -372,7 +379,7 @@ public class RuntimeTests
         var ex = await Assert.That(() => runtime.Dispatch(new ThermostatEvent.HeaterTurnedOn()).AsTask())
             .ThrowsExactly<ArgumentNullException>();
 
-        await Assert.That(ex!.ParamName).Contains("value");
+        await Assert.That(ex.ParamName).Contains("value");
     }
 
     // =========================================================================
@@ -805,7 +812,7 @@ public class RuntimeTests
         var result = await caught(state, new ThermostatEvent.TemperatureRecorded(25m), new ThermostatEffect.None());
 
         await Assert.That(capturedError).IsNotNull();
-        await Assert.That(capturedError!.Value.Message).IsEqualTo("test error");
+        await Assert.That(capturedError.Value.Message).IsEqualTo("test error");
         await Assert.That(result.IsOk).IsTrue();
     }
 
@@ -1155,7 +1162,7 @@ public class RuntimeTests
         var result = await caught(new ThermostatEffect.None());
 
         await Assert.That(capturedError).IsNotNull();
-        await Assert.That(capturedError!.Value.Message).IsEqualTo("interpreter error");
+        await Assert.That(capturedError.Value.Message).IsEqualTo("interpreter error");
         await Assert.That(result.IsOk).IsTrue();
         await Assert.That(result.Value).HasSingleItem();
         await Assert.That(result.Value[0]).IsTypeOf<ThermostatEvent.HeaterTurnedOff>();
