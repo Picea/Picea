@@ -108,11 +108,53 @@ public class GuardedDeciderTests
         await Assert.That(runtime.Events.Count).IsEqualTo(2);
     }
 
-    private static async Task<GuardedDecidingRuntime<Thermostat, ThermostatPrincipal, ThermostatState, ThermostatCommand,
+    [Test]
+    public async Task Handle_AuthorizationDenial_ReleasesGate_ForFollowingCommand()
+    {
+        var runtime = await CreateRuntime();
+        var initialState = runtime.State;
+
+        var denied = await runtime.Handle(
+            new ThermostatPrincipal(ThermostatRole.Guest),
+            new ThermostatCommand.SetTarget(25m));
+
+        await Assert.That(denied.IsErr).IsTrue();
+        await Assert.That(runtime.State).IsEqualTo(initialState);
+        await Assert.That(runtime.Events).IsEmpty();
+
+        var allowed = await runtime.Handle(
+            new ThermostatPrincipal(ThermostatRole.Operator),
+            new ThermostatCommand.RecordReading(18m));
+
+        await Assert.That(allowed.IsOk).IsTrue();
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(18m);
+        await Assert.That(runtime.State.Heating).IsTrue();
+    }
+
+    [Test]
+    public async Task Handle_WhenDenialObserverThrows_GateIsReleasedForNextCommand()
+    {
+        var runtime = await CreateRuntime((_, _, _, _, _) =>
+            ValueTask.FromException(new InvalidOperationException("denial observer failure")));
+
+        await Assert.That(() => runtime.Handle(
+                new ThermostatPrincipal(ThermostatRole.Guest),
+                new ThermostatCommand.SetTarget(25m)).AsTask())
+            .ThrowsExactly<InvalidOperationException>();
+
+        var allowed = await runtime.Handle(
+            new ThermostatPrincipal(ThermostatRole.Operator),
+            new ThermostatCommand.RecordReading(18m));
+
+        await Assert.That(allowed.IsOk).IsTrue();
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(18m);
+    }
+
+    private static async Task<GuardedDecidingRuntime<Thermostat, ThermostatGuardPolicy, ThermostatPrincipal, ThermostatState, ThermostatCommand,
             ThermostatEvent, ThermostatEffect, ThermostatError, Unit>> CreateRuntime(
         DenialObserver<ThermostatPrincipal, ThermostatState, ThermostatCommand, ThermostatError>? denialObserver = null)
     {
-        return await GuardedDecidingRuntime<Thermostat, ThermostatPrincipal, ThermostatState, ThermostatCommand,
+        return await GuardedDecidingRuntime<Thermostat, ThermostatGuardPolicy, ThermostatPrincipal, ThermostatState, ThermostatCommand,
             ThermostatEvent, ThermostatEffect, ThermostatError, Unit>.Start(
                 default,
                 ThermostatObservers.NoOp,

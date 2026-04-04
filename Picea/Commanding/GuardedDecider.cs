@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using Picea;
 
 namespace Picea.Commanding;
 
@@ -44,8 +43,9 @@ public delegate Result<ValidCommand<TCommand>, TError> Policy<in TPrincipal, in 
 /// </summary>
 public enum DenialKind
 {
-    Authorization = 0,
-    Validation = 1
+    None = 0,
+    Authorization = 1,
+    Validation = 2
 }
 
 /// <summary>
@@ -67,18 +67,7 @@ public delegate ValueTask DenialObserver<in TPrincipal, in TState, in TCommand, 
     TCommand command,
     TError error);
 
-/// <summary>
-/// A Decider with explicit authorization and validation stages.
-/// </summary>
-/// <typeparam name="TPrincipal">The principal/actor type.</typeparam>
-/// <typeparam name="TState">The aggregate state.</typeparam>
-/// <typeparam name="TCommand">The command type.</typeparam>
-/// <typeparam name="TEvent">The event type.</typeparam>
-/// <typeparam name="TEffect">The effect type.</typeparam>
-/// <typeparam name="TError">The domain error type.</typeparam>
-/// <typeparam name="TParameters">Initialization parameters.</typeparam>
-public interface GuardedDecider<TPrincipal, TState, TCommand, TEvent, TEffect, TError, TParameters>
-    : Automaton<TState, TEvent, TEffect, TParameters>
+public interface GuardedPolicy<TPrincipal, TState, TCommand, TError>
 {
     /// <summary>
     /// Principal-based authorization stage.
@@ -89,11 +78,23 @@ public interface GuardedDecider<TPrincipal, TState, TCommand, TEvent, TEffect, T
     /// Command validation stage.
     /// </summary>
     static abstract Validator<TState, TCommand, TError> Validate { get; }
+}
 
+/// <summary>
+/// A Decider with explicit authorization and validation stages.
+/// </summary>
+/// <typeparam name="TState">The aggregate state.</typeparam>
+/// <typeparam name="TCommand">The command type.</typeparam>
+/// <typeparam name="TEvent">The event type.</typeparam>
+/// <typeparam name="TEffect">The effect type.</typeparam>
+/// <typeparam name="TParameters">Initialization parameters.</typeparam>
+public interface GuardedDecider<TState, TCommand, TEvent, TEffect, TParameters>
+    : Automaton<TState, TEvent, TEffect, TParameters>
+{
     /// <summary>
     /// Produces events for an already authorized and validated command.
     /// </summary>
-    static abstract Result<TEvent[], TError> Decide(TState state, ValidCommand<TCommand> command);
+    static abstract TEvent[] Decide(TState state, ValidCommand<TCommand> command);
 
     /// <summary>
     /// Whether the automaton has reached a terminal state.
@@ -104,8 +105,9 @@ public interface GuardedDecider<TPrincipal, TState, TCommand, TEvent, TEffect, T
 /// <summary>
 /// Runtime for a secure staged decider: authorize, validate, decide, then dispatch.
 /// </summary>
-public sealed class GuardedDecidingRuntime<TGuardedDecider, TPrincipal, TState, TCommand, TEvent, TEffect, TError, TParameters> : IDisposable
-    where TGuardedDecider : GuardedDecider<TPrincipal, TState, TCommand, TEvent, TEffect, TError, TParameters>
+public sealed class GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TPrincipal, TState, TCommand, TEvent, TEffect, TError, TParameters> : IDisposable
+    where TGuardedDecider : GuardedDecider<TState, TCommand, TEvent, TEffect, TParameters>
+    where TGuardedPolicy : GuardedPolicy<TPrincipal, TState, TCommand, TError>
 {
     private static readonly string _deciderTypeName = typeof(TGuardedDecider).Name;
     private static readonly DenialObserver<TPrincipal, TState, TCommand, TError> _noOpDenialObserver =
@@ -149,7 +151,7 @@ public sealed class GuardedDecidingRuntime<TGuardedDecider, TPrincipal, TState, 
     /// <param name="cancellationToken">Token used to cancel runtime startup.</param>
     /// <returns>A started guarded deciding runtime.</returns>
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
-    public static async ValueTask<GuardedDecidingRuntime<TGuardedDecider, TPrincipal, TState, TCommand, TEvent, TEffect, TError, TParameters>> Start(
+    public static async ValueTask<GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TPrincipal, TState, TCommand, TEvent, TEffect, TError, TParameters>> Start(
         TParameters parameters,
         Observer<TState, TEvent, TEffect> observer,
         Interpreter<TEffect, TEvent> interpreter,
@@ -165,7 +167,7 @@ public sealed class GuardedDecidingRuntime<TGuardedDecider, TPrincipal, TState, 
             .Start(parameters, observer, interpreter, threadSafe, trackEvents, cancellationToken).ConfigureAwait(false);
 
         activity?.SetStatus(ActivityStatusCode.Ok);
-        return new GuardedDecidingRuntime<TGuardedDecider, TPrincipal, TState, TCommand, TEvent, TEffect, TError, TParameters>(
+        return new GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TPrincipal, TState, TCommand, TEvent, TEffect, TError, TParameters>(
             core,
             denialObserver ?? _noOpDenialObserver);
     }
@@ -212,7 +214,7 @@ public sealed class GuardedDecidingRuntime<TGuardedDecider, TPrincipal, TState, 
     {
         var state = _core.State;
 
-        var authorized = TGuardedDecider.Authorize(principal, state, command);
+        var authorized = TGuardedPolicy.Authorize(principal, state, command);
         if (authorized.IsErr)
         {
             authorized.TryGetError(out var authorizationError);
@@ -224,7 +226,7 @@ public sealed class GuardedDecidingRuntime<TGuardedDecider, TPrincipal, TState, 
         }
 
         authorized.TryGetValue(out var authorizedCommand);
-        var validated = TGuardedDecider.Validate(state, authorizedCommand.Command);
+        var validated = TGuardedPolicy.Validate(state, authorizedCommand.Command);
         if (validated.IsErr)
         {
             validated.TryGetError(out var validationError);
@@ -236,18 +238,7 @@ public sealed class GuardedDecidingRuntime<TGuardedDecider, TPrincipal, TState, 
         }
 
         validated.TryGetValue(out var validatedCommand);
-        var decided = TGuardedDecider.Decide(state, validatedCommand);
-        if (decided.IsErr)
-        {
-            decided.TryGetError(out var decisionError);
-            activity?.SetTag("automaton.result", "error");
-            activity?.SetTag("automaton.error.type", decisionError?.GetType().Name);
-            activity?.SetStatus(ActivityStatusCode.Ok);
-            return Result<TState, TError>.Err(decisionError);
-        }
-
-        decided.TryGetValue(out var decidedEvents);
-        var events = ContractGuards.RequireNonNullArray(decidedEvents);
+        var events = ContractGuards.RequireNonNullArray(TGuardedDecider.Decide(state, validatedCommand));
         for (var i = 0; i < events.Length; i++)
         {
             var dispatchResult = await _core.DispatchUnlocked(events[i], cancellationToken).ConfigureAwait(false);

@@ -131,7 +131,7 @@ public interface ThermostatEffect
 /// </remarks>
 public class Thermostat
     : Decider<ThermostatState, ThermostatCommand, ThermostatEvent, ThermostatEffect, ThermostatError, Unit>,
-    GuardedDecider<ThermostatPrincipal, ThermostatState, ThermostatCommand, ThermostatEvent, ThermostatEffect, ThermostatError, Unit>
+    GuardedDecider<ThermostatState, ThermostatCommand, ThermostatEvent, ThermostatEffect, Unit>
 {
     public const decimal MinTarget = 5.0m;
     public const decimal MaxTarget = 40.0m;
@@ -217,36 +217,50 @@ public class Thermostat
             _ => throw new UnreachableException()
         };
 
-    public static Policy<ThermostatPrincipal, ThermostatState, ThermostatCommand, ThermostatError> Authorize =>
-        static (principal, _, command) =>
-            (principal.Role, command) switch
-            {
-                (ThermostatRole.Guest, ThermostatCommand.SetTarget) =>
-                    Result<ValidCommand<ThermostatCommand>, ThermostatError>.Err(
-                        new ThermostatError.Unauthorized("Guests cannot change target temperature.")),
-
-                (ThermostatRole.Guest, ThermostatCommand.Shutdown) =>
-                    Result<ValidCommand<ThermostatCommand>, ThermostatError>.Err(
-                        new ThermostatError.Unauthorized("Guests cannot shut down the thermostat.")),
-
-                _ => Result<ValidCommand<ThermostatCommand>, ThermostatError>.Ok(new ValidCommand<ThermostatCommand>(command))
-            };
-
-    public static Validator<ThermostatState, ThermostatCommand, ThermostatError> Validate =>
-        static (_, command) =>
-            command switch
-            {
-                ThermostatCommand.SetTarget(var target) when target is < MinTarget or > MaxTarget =>
-                    Result<ValidCommand<ThermostatCommand>, ThermostatError>.Err(
-                        new ThermostatError.InvalidTarget(target, MinTarget, MaxTarget)),
-
-                _ => Result<ValidCommand<ThermostatCommand>, ThermostatError>.Ok(new ValidCommand<ThermostatCommand>(command))
-            };
-
-    public static Result<ThermostatEvent[], ThermostatError> Decide(
+    public static ThermostatEvent[] Decide(
         ThermostatState state,
         ValidCommand<ThermostatCommand> command) =>
-        Decide(state, command.Command);
+        command.Command switch
+        {
+            ThermostatCommand.RecordReading(var temp) when temp > AlertThreshold =>
+                state.Heating
+                    ? [new ThermostatEvent.TemperatureRecorded(temp),
+                       new ThermostatEvent.HeaterTurnedOff(),
+                       new ThermostatEvent.AlertRaised($"Temperature {temp}°C exceeds alert threshold {AlertThreshold}°C")]
+                    : [new ThermostatEvent.TemperatureRecorded(temp),
+                       new ThermostatEvent.AlertRaised($"Temperature {temp}°C exceeds alert threshold {AlertThreshold}°C")],
+
+            ThermostatCommand.RecordReading(var temp) when temp < state.TargetTemp && !state.Heating =>
+                [new ThermostatEvent.TemperatureRecorded(temp),
+                 new ThermostatEvent.HeaterTurnedOn()],
+
+            ThermostatCommand.RecordReading(var temp) when temp >= state.TargetTemp && state.Heating =>
+                [new ThermostatEvent.TemperatureRecorded(temp),
+                 new ThermostatEvent.HeaterTurnedOff()],
+
+            ThermostatCommand.RecordReading(var temp) =>
+                [new ThermostatEvent.TemperatureRecorded(temp)],
+
+            ThermostatCommand.SetTarget(var target) when state.CurrentTemp < target && !state.Heating =>
+                [new ThermostatEvent.TargetSet(target),
+                 new ThermostatEvent.HeaterTurnedOn()],
+
+            ThermostatCommand.SetTarget(var target) when state.CurrentTemp >= target && state.Heating =>
+                [new ThermostatEvent.TargetSet(target),
+                 new ThermostatEvent.HeaterTurnedOff()],
+
+            ThermostatCommand.SetTarget(var target) =>
+                [new ThermostatEvent.TargetSet(target)],
+
+            ThermostatCommand.Shutdown when state.Heating =>
+                [new ThermostatEvent.HeaterTurnedOff(),
+                 new ThermostatEvent.ShutdownCompleted()],
+
+            ThermostatCommand.Shutdown =>
+                [new ThermostatEvent.ShutdownCompleted()],
+
+            _ => throw new UnreachableException()
+        };
 
     public static (ThermostatState State, ThermostatEffect Effect) Transition(
         ThermostatState state, ThermostatEvent @event) =>
@@ -283,6 +297,49 @@ public class Thermostat
     /// A shut-down thermostat is terminal — no further commands should be processed.
     /// </summary>
     public static bool IsTerminal(ThermostatState state) => !state.Active;
+}
+
+public sealed class ThermostatGuardPolicy
+    : GuardedPolicy<ThermostatPrincipal, ThermostatState, ThermostatCommand, ThermostatError>
+{
+    public static Policy<ThermostatPrincipal, ThermostatState, ThermostatCommand, ThermostatError> Authorize =>
+        static (principal, _, command) =>
+            (principal.Role, command) switch
+            {
+                (ThermostatRole.Guest, ThermostatCommand.SetTarget) =>
+                    Result<ValidCommand<ThermostatCommand>, ThermostatError>.Err(
+                        new ThermostatError.Unauthorized("Guests cannot change target temperature.")),
+
+                (ThermostatRole.Guest, ThermostatCommand.Shutdown) =>
+                    Result<ValidCommand<ThermostatCommand>, ThermostatError>.Err(
+                        new ThermostatError.Unauthorized("Guests cannot shut down the thermostat.")),
+
+                _ => Result<ValidCommand<ThermostatCommand>, ThermostatError>.Ok(new ValidCommand<ThermostatCommand>(command))
+            };
+
+    public static Validator<ThermostatState, ThermostatCommand, ThermostatError> Validate =>
+        static (state, command) =>
+            command switch
+            {
+                ThermostatCommand.Shutdown when !state.Active =>
+                    Result<ValidCommand<ThermostatCommand>, ThermostatError>.Err(
+                        new ThermostatError.AlreadyShutdown()),
+
+                _ when !state.Active =>
+                    Result<ValidCommand<ThermostatCommand>, ThermostatError>.Err(
+                        new ThermostatError.SystemInactive()),
+
+                ThermostatCommand.SetTarget(var target) when target is < Thermostat.MinTarget or > Thermostat.MaxTarget =>
+                    Result<ValidCommand<ThermostatCommand>, ThermostatError>.Err(
+                        new ThermostatError.InvalidTarget(target, Thermostat.MinTarget, Thermostat.MaxTarget)),
+
+                ThermostatCommand.SetTarget
+                    or ThermostatCommand.RecordReading
+                    or ThermostatCommand.Shutdown =>
+                    Result<ValidCommand<ThermostatCommand>, ThermostatError>.Ok(new ValidCommand<ThermostatCommand>(command)),
+
+                _ => throw new UnreachableException()
+            };
 }
 
 // ── Observers ─────────────────────────────────────────────────
