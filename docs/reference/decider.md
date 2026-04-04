@@ -13,7 +13,10 @@ public interface Decider<TState, TCommand, TEvent, TEffect, TError, TParameters>
     : Automaton<TState, TEvent, TEffect, TParameters>
 {
     static abstract Validated<TCommand, TError> Validate(TState state, TCommand command);
-    static virtual Result<Unit, TError> Authorize(TState state, Validated<TCommand, TError> command) =>
+    static virtual Result<Unit, TError> Authorize<TAuthorizationContext>(
+        TState state,
+        Validated<TCommand, TError> command,
+        TAuthorizationContext authorizationContext) =>
         Result<Unit, TError>.Ok(Unit.Value);
     static abstract Result<TEvent[], TError> Decide(TState state, Validated<TCommand, TError> command);
     static virtual bool IsTerminal(TState state) => false;
@@ -46,8 +49,10 @@ Stage 1 (feasibility). Must be pure.
 ### Authorize
 
 ```csharp
-static virtual Result<Unit, TError> Authorize(
-    TState state, Validated<TCommand, TError> command) =>
+static virtual Result<Unit, TError> Authorize<TAuthorizationContext>(
+    TState state,
+    Validated<TCommand, TError> command,
+    TAuthorizationContext authorizationContext) =>
     Result<Unit, TError>.Ok(Unit.Value);
 ```
 
@@ -57,6 +62,13 @@ Stage 2 (permission). Must be pure.
 - `Err(error)` — denied.
 
 The default implementation allows all validated commands.
+
+Authorization-context guidance:
+
+- Provide caller/application context via `TAuthorizationContext` (identity, tenant, roles/claims snapshot).
+- Keep secrets and transport artifacts (JWT raw token, headers) out of domain state.
+- Model denials as `Err(TError)` with domain meaning (`Forbidden`, `TenantMismatch`, etc.).
+- Prefer small immutable context records over primitive bags.
 
 ### Decide
 
@@ -97,7 +109,15 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
 ```csharp
 public ValueTask<Result<TState, TError>> Handle(
     TCommand command, CancellationToken cancellationToken = default)
+
+public ValueTask<Result<TState, TError>> Handle<TAuthorizationContext>(
+    TCommand command,
+    TAuthorizationContext authorizationContext,
+    CancellationToken cancellationToken = default)
 ```
+
+`Handle(command, cancellationToken)` forwards to the generic overload with `Unit.Value`.
+Use the generic overload when your decider authorization depends on caller context.
 
 Handles a command using the staged pipeline:
 
@@ -115,12 +135,12 @@ Return value:
 
 ---
 
-## DeciderComposition
+## DeciderComposition (Internal)
 
-Helper API for explicit functional composition of staged deciders.
+Internal helper API for explicit functional composition of staged deciders.
 
 ```csharp
-public static class DeciderComposition
+internal static class DeciderComposition
 {
     public static Result<Validated<TCommand, TError>, TError> ValidateToResult<TCommand, TError>(
         Validated<TCommand, TError> validated);
@@ -129,11 +149,12 @@ public static class DeciderComposition
         Validated<TCommand, TError> validated,
         Result<Unit, TError> authorization);
 
-    public static Result<TEvent[], TError> Compose<TState, TCommand, TEvent, TError>(
+    public static Result<TEvent[], TError> Compose<TState, TCommand, TEvent, TError, TAuthorizationContext>(
         TState state,
         TCommand command,
+        TAuthorizationContext authorizationContext,
         Func<TState, TCommand, Validated<TCommand, TError>> validate,
-        Func<TState, Validated<TCommand, TError>, Result<Unit, TError>> authorize,
+        Func<TState, Validated<TCommand, TError>, TAuthorizationContext, Result<Unit, TError>> authorize,
         Func<TState, Validated<TCommand, TError>, Result<TEvent[], TError>> decide);
 }
 ```

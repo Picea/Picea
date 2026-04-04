@@ -56,7 +56,7 @@ public abstract record Validated<TCommand, TError>
 /// Formal composition helpers for the staged Decider pipeline.
 /// These helpers make the short-circuiting composition explicit and testable.
 /// </summary>
-public static class DeciderComposition
+internal static class DeciderComposition
 {
     /// <summary>
     /// Lifts a <see cref="Validated{TCommand,TError}"/> value into <see cref="Result{TSuccess,TError}"/>,
@@ -261,6 +261,7 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
             else
             {
                 var decisionError = decided.Error;
+                activity?.SetTag("automaton.pipeline.stage", "decide");
                 activity?.SetTag("automaton.result", "error");
                 activity?.SetTag("automaton.error.type", decisionError?.GetType().Name);
                 activity?.SetStatus(ActivityStatusCode.Ok);
@@ -395,6 +396,7 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
             else
             {
                 var decisionError = decided.Error;
+                activity?.SetTag("automaton.pipeline.stage", "decide");
                 activity?.SetTag("automaton.result", "error");
                 activity?.SetTag("automaton.error.type", decisionError?.GetType().Name);
                 activity?.SetStatus(ActivityStatusCode.Ok);
@@ -536,6 +538,7 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
             else
             {
                 var decisionError = decided.Error;
+                activity?.SetTag("automaton.pipeline.stage", "decide");
                 activity?.SetTag("automaton.result", "error");
                 activity?.SetTag("automaton.error.type", decisionError?.GetType().Name);
                 activity?.SetStatus(ActivityStatusCode.Ok);

@@ -21,7 +21,10 @@ public interface Decider<TState, TCommand, TEvent, TEffect, TError, TParameters>
     : Automaton<TState, TEvent, TEffect, TParameters>
 {
     static abstract Validated<TCommand, TError> Validate(TState state, TCommand command);
-    static virtual Result<Unit, TError> Authorize(TState state, Validated<TCommand, TError> command) =>
+    static virtual Result<Unit, TError> Authorize<TAuthorizationContext>(
+        TState state,
+        Validated<TCommand, TError> command,
+        TAuthorizationContext authorizationContext) =>
         Result<Unit, TError>.Ok(Unit.Value);
     static abstract Result<TEvent[], TError> Decide(TState state, Validated<TCommand, TError> command);
     static virtual bool IsTerminal(TState state) => false;
@@ -34,18 +37,20 @@ Key design choices:
 
 2. **Three-stage command pipeline** —
     - `Validate` returns `Validated<TCommand, TError>` (`Valid` or `Invalid`)
-    - `Authorize` returns `Result<Unit, TError>` (`Ok(Unit)` when permitted; `Err(error)` when denied)
+    - `Authorize<TAuthorizationContext>` returns `Result<Unit, TError>` (`Ok(Unit)` when permitted; `Err(error)` when denied)
     - `Decide` returns `Result<TEvent[], TError>` for event production
 
     This keeps all reject paths in explicit sum types and allows short-circuit composition.
 
+    Authorization context is explicitly passed from the application boundary and is not part of persisted domain state. This keeps transport/security artifacts (for example raw bearer tokens) outside the functional core while still allowing policy checks in the authorization stage.
+
 3. **`IsTerminal` with default implementation** — Uses `static virtual` (C# 11) to provide a sensible default (`false`) while allowing domain-specific overrides. Terminal states signal that no further commands should be processed.
 
-4. **`DecidingRuntime` wraps `AutomatonRuntime`** — The `Handle(command)` method executes `Validate → Authorize → Decide`, then dispatches the resulting events through the existing runtime. This reuses all existing infrastructure (observer, interpreter, thread safety, tracing).
+4. **`DecidingRuntime` wraps `AutomatonRuntime`** — The `Handle(command, ...)` methods execute `Validate → Authorize → Decide`, then dispatch the resulting events through the existing runtime. This reuses all existing infrastructure (observer, interpreter, thread safety, tracing).
 
 5. **Atomic Handle** — The entire `Handle` operation (Validate + Authorize + Decide + all Dispatches) executes under a single semaphore acquisition. This prevents TOCTOU races where state changes between stage reads and event dispatch.
 
-6. **Formal composition helper** — `DeciderComposition.Compose(...)` is provided to express the staged pipeline as explicit monadic composition and to support law tests.
+6. **Formal composition helper** — internal `DeciderComposition.Compose(...)` is provided to express the staged pipeline as explicit monadic composition and to support law tests.
 
 ## Consequences
 
@@ -54,6 +59,7 @@ Key design choices:
 - **Pure stages** — `Validate`, `Authorize`, and `Decide` are pure functions, testable without runtime infrastructure
 - **Typed errors** — Errors carry domain context (`Overflow(current, amount, max)`) not just strings
 - **Explicit short-circuit semantics** — First reject wins, with no partial dispatch
+- **Boundary-safe authorization** — caller context can be injected for policy checks without leaking credentials into state evolution
 
 ### Negative
 - **Six type parameters** — `Decider<TState, TCommand, TEvent, TEffect, TError, TParameters>` is verbose. Mitigated by IDE support and the fact that these are all genuinely distinct concerns.

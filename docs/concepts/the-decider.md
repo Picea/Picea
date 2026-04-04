@@ -9,7 +9,10 @@ public interface Decider<TState, TCommand, TEvent, TEffect, TError, TParameters>
     : Automaton<TState, TEvent, TEffect, TParameters>
 {
     static abstract Validated<TCommand, TError> Validate(TState state, TCommand command);
-    static virtual Result<Unit, TError> Authorize(TState state, Validated<TCommand, TError> command) =>
+    static virtual Result<Unit, TError> Authorize<TAuthorizationContext>(
+        TState state,
+        Validated<TCommand, TError> command,
+        TAuthorizationContext authorizationContext) =>
         Result<Unit, TError>.Ok(Unit.Value);
     static abstract Result<TEvent[], TError> Decide(TState state, Validated<TCommand, TError> command);
     static virtual bool IsTerminal(TState state) => false;
@@ -23,7 +26,7 @@ Command (intent)
   └─▶ Validate   : Command -> Validated<Command, Error>
         ├─ Invalid(error) -> reject
         └─ Valid(command')
-              └─▶ Authorize : Validated<Command, Error> -> Result<Unit, Error>
+              └─▶ Authorize : (Validated<Command, Error>, AuthContext) -> Result<Unit, Error>
                     ├─ Err(error) -> reject
                     └─ Ok(Unit)
                           └─▶ Decide : Validated<Command, Error> -> Result<Events, Error>
@@ -33,9 +36,9 @@ Command (intent)
 
 All stages are pure functions and short-circuit on first rejection.
 
-## The Seven Elements
+## The Nine Elements
 
-The Decider pattern (Chassaing, 2021) has seven elements. The Automaton kernel provides four, the Decider adds three:
+The decider-shaped automaton in this library exposes nine explicit elements:
 
 | # | Element | Provider | Implementation |
 |---|---------|----------|----------------|
@@ -44,7 +47,7 @@ The Decider pattern (Chassaing, 2021) has seven elements. The Automaton kernel p
 | 3 | State type | Type parameter | `TState` |
 | 4 | Initial state | Automaton | `Initialize(parameters)` |
 | 5 | **Validate** | **Decider** | `Validate(state, command)` |
-| 6 | **Authorize** | **Decider** | `Authorize(state, validated)` |
+| 6 | **Authorize** | **Decider** | `Authorize(state, validated, authorizationContext)` |
 | 7 | **Decide** | **Decider** | `Decide(state, validated)` |
 | 8 | Evolve | Automaton | `Transition(state, event)` |
 | 9 | **Is terminal** | **Decider** | `IsTerminal(state)` |
@@ -83,13 +86,36 @@ public static Validated<CounterCommand, CounterError> Validate(
 `Authorize` checks whether a validated command is permitted in the current state.
 
 ```csharp
-public static Result<Unit, CounterError> Authorize(
-    CounterState state, Validated<CounterCommand, CounterError> validated) =>
+public static Result<Unit, CounterError> Authorize<TAuthorizationContext>(
+    CounterState state,
+    Validated<CounterCommand, CounterError> validated,
+    TAuthorizationContext authorizationContext) =>
     Result<Unit, CounterError>.Ok(Unit.Value);
 ```
 
 - `Ok(Unit.Value)` means permitted.
 - `Err(error)` means denied.
+
+### Authorization Context Principles
+
+- Keep the authorization context at the application boundary. Pass it into `Handle(command, authorizationContext, ...)` and `Authorize<TAuthorizationContext>(...)`, but do not persist raw credentials/tokens in domain state.
+- Prefer constrained context types over primitives (`UserId`, `Roles`, `TenantId`, claims snapshot) so required auth data is explicit and testable.
+- Keep `Authorize` pure and deterministic for a given `(state, validatedCommand, authorizationContext)`.
+- Return domain authorization errors in `TError` (`Err(error)`), not exceptions, so denial stays in the typed pipeline.
+
+Example shape:
+
+```csharp
+public sealed record UserContext(Guid UserId, bool CanIncrement);
+
+public static Result<Unit, CounterError> Authorize(
+    CounterState state,
+    Validated<CounterCommand, CounterError> validated,
+    UserContext authorizationContext) =>
+    authorizationContext.CanIncrement
+        ? Result<Unit, CounterError>.Ok(Unit.Value)
+        : Result<Unit, CounterError>.Err(new CounterError.Forbidden(authorizationContext.UserId));
+```
 
 ## Decide: Event Production
 
@@ -117,7 +143,7 @@ public static Result<CounterEvent[], CounterError> Decide(
 
 ## DecidingRuntime
 
-The `DecidingRuntime` wraps `AutomatonRuntime` and adds `Handle(command)`:
+The `DecidingRuntime` wraps `AutomatonRuntime` and adds `Handle(command, ...)`:
 
 ```csharp
 var runtime = await DecidingRuntime<Counter, CounterState, CounterCommand,
@@ -137,12 +163,13 @@ The entire `Handle` operation (Validate + Authorize + Decide + all Dispatches) e
 
 ## Formal Composition
 
-The `DeciderComposition` helper provides explicit monadic composition for the three stages:
+The internal `DeciderComposition` helper provides explicit monadic composition for the three stages:
 
 ```csharp
 var result = DeciderComposition.Compose(
     state,
     command,
+    authorizationContext,
     validate: Counter.Validate,
     authorize: Counter.Authorize,
     decide: Counter.Decide);
