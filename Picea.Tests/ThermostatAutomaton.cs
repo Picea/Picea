@@ -45,6 +45,21 @@ public interface ThermostatCommand
     record struct Shutdown : ThermostatCommand;
 }
 
+/// <summary>
+/// Principal roles for secure command handling.
+/// </summary>
+public enum ThermostatRole
+{
+    Operator = 0,
+    Guest = 1
+}
+
+/// <summary>
+/// The principal issuing secure thermostat commands.
+/// </summary>
+/// <param name="Role">The role used by authorization policy.</param>
+public readonly record struct ThermostatPrincipal(ThermostatRole Role);
+
 // ── Events ────────────────────────────────────────────────────
 
 /// <summary>
@@ -75,6 +90,9 @@ public interface ThermostatError
 
     /// <summary>Shutdown requested when already shut down.</summary>
     record struct AlreadyShutdown : ThermostatError;
+
+    /// <summary>The principal is not allowed to execute this command.</summary>
+    record struct Unauthorized(string Reason) : ThermostatError;
 }
 
 // ── Effects ───────────────────────────────────────────────────
@@ -139,7 +157,6 @@ public class Thermostat
                 Result<ThermostatEvent[], ThermostatError>
                     .Err(new ThermostatError.SystemInactive()),
 
-            // ── RecordReading ────────────────────────────────────
             ThermostatCommand.RecordReading(var temp) when temp > AlertThreshold =>
                 Result<ThermostatEvent[], ThermostatError>
                     .Ok(state.Heating
@@ -165,7 +182,6 @@ public class Thermostat
                 Result<ThermostatEvent[], ThermostatError>
                     .Ok([new ThermostatEvent.TemperatureRecorded(temp)]),
 
-            // ── SetTarget ────────────────────────────────────────
             ThermostatCommand.SetTarget(var target) when target is < MinTarget or > MaxTarget =>
                 Result<ThermostatEvent[], ThermostatError>
                     .Err(new ThermostatError.InvalidTarget(target, MinTarget, MaxTarget)),
@@ -184,7 +200,6 @@ public class Thermostat
                 Result<ThermostatEvent[], ThermostatError>
                     .Ok([new ThermostatEvent.TargetSet(target)]),
 
-            // ── Shutdown (active) ────────────────────────────────
             ThermostatCommand.Shutdown when state.Heating =>
                 Result<ThermostatEvent[], ThermostatError>
                     .Ok([new ThermostatEvent.HeaterTurnedOff(),

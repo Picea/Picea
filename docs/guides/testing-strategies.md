@@ -143,6 +143,60 @@ public static class CounterTestHelpers
 }
 ```
 
+## Secure Staged Pipeline Tests
+
+When using `GuardedDecider` and `GuardedDecidingRuntime`, add explicit tests per stage.
+
+### Validate Rejection
+
+```csharp
+[Fact]
+public async Task Handle_WhenValidationFails_ReturnsErr_AndDoesNotDispatch()
+{
+    var runtime = await CreateGuardedRuntime();
+
+    var result = await runtime.Handle(TestPrincipal.Operator, new CounterCommand.Add(-999));
+
+    Assert.True(result.IsErr);
+    Assert.Equal(0, runtime.Events.Count);
+}
+```
+
+### Authorize Rejection
+
+```csharp
+[Fact]
+public async Task Handle_WhenUnauthorized_ReturnsErr_AndDoesNotDispatch()
+{
+    var runtime = await CreateGuardedRuntime();
+
+    var result = await runtime.Handle(TestPrincipal.Viewer, new CounterCommand.Reset());
+
+    Assert.True(result.IsErr);
+    Assert.Equal(0, runtime.Events.Count);
+}
+```
+
+### Denial Observer Audit
+
+```csharp
+[Fact]
+public async Task Handle_WhenDenied_InvokesDenialObserver()
+{
+    var denials = new List<DenialKind>();
+
+    var runtime = await CreateGuardedRuntime((kind, _) =>
+    {
+        denials.Add(kind);
+        return Unit.Value;
+    });
+
+    _ = await runtime.Handle(TestPrincipal.Viewer, new CounterCommand.Reset());
+
+    Assert.Contains(DenialKind.Authorization, denials);
+}
+```
+
 ## See Also
 
 - [Tutorial 01](../tutorials/01-getting-started.md) — the thermostat example

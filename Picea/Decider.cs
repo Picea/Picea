@@ -44,8 +44,19 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
 
     private readonly AutomatonRuntime<TDecider, TState, TEvent, TEffect, TParameters> _core;
 
+    /// <summary>
+    /// Gets the current decider state snapshot.
+    /// </summary>
     public TState State => _core.State;
+
+    /// <summary>
+    /// Gets a snapshot of events dispatched through command handling.
+    /// </summary>
     public IReadOnlyList<TEvent> Events => _core.Events;
+
+    /// <summary>
+    /// Gets whether the decider is in a terminal state.
+    /// </summary>
     public bool IsTerminal => TDecider.IsTerminal(_core.State);
 
     private DecidingRuntime(AutomatonRuntime<TDecider, TState, TEvent, TEffect, TParameters> core)
@@ -53,6 +64,16 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
         _core = core;
     }
 
+    /// <summary>
+    /// Starts a command-handling runtime for the decider.
+    /// </summary>
+    /// <param name="parameters">The decider initialization parameters.</param>
+    /// <param name="observer">Observer pipeline capability for transition side effects.</param>
+    /// <param name="interpreter">Interpreter pipeline capability for feedback events.</param>
+    /// <param name="threadSafe">Whether command handling is serialized through a gate.</param>
+    /// <param name="trackEvents">Whether dispatched events are stored in runtime history.</param>
+    /// <param name="cancellationToken">Token used to cancel runtime startup.</param>
+    /// <returns>A started deciding runtime.</returns>
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     public static async ValueTask<DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect, TError, TParameters>> Start(
         TParameters parameters,
@@ -73,6 +94,14 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
         return new DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect, TError, TParameters>(core);
     }
 
+    /// <summary>
+    /// Handles a command by deciding events and dispatching them atomically.
+    /// </summary>
+    /// <param name="command">The command to evaluate against current state.</param>
+    /// <param name="cancellationToken">Token used to cancel command handling.</param>
+    /// <returns>
+    /// Updated state on success, or a domain error when decision fails.
+    /// </returns>
     public ValueTask<Result<TState, TError>> Handle(TCommand command, CancellationToken cancellationToken = default)
     {
         var activity = AutomatonDiagnostics.Source.StartActivity("Automaton.Decider.Handle");
@@ -99,14 +128,15 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
             var decided = TDecider.Decide(_core.State, command);
             if (decided.IsOk)
             {
+                decided.TryGetValue(out var decidedEvents);
                 return DispatchEventsAndReturnOkUnserialized(
-                    ContractGuards.RequireNonNullArray(decided.Value),
+                    ContractGuards.RequireNonNullArray(decidedEvents),
                     cancellationToken,
                     activity);
             }
             else
             {
-                var error = decided.Error;
+                decided.TryGetError(out var error);
                 activity?.SetTag("automaton.result", "error");
                 activity?.SetTag("automaton.error.type", error?.GetType().Name);
                 activity?.SetStatus(ActivityStatusCode.Ok);
@@ -129,7 +159,9 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
     }
 
     private ValueTask<Result<TState, TError>> DispatchEventsAndReturnOkUnserialized(
-        TEvent[] events, CancellationToken cancellationToken, Activity? activity)
+        TEvent[] events,
+        CancellationToken cancellationToken,
+        Activity? activity)
     {
         try
         {
@@ -141,9 +173,12 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
 
                 var dispatchResult = dispatchTask.Result;
                 if (dispatchResult.IsErr)
+                {
+                    dispatchResult.TryGetError(out var dispatchError);
                     throw new InvalidOperationException(
-                        $"Pipeline error during dispatch: {dispatchResult.Error}",
-                        dispatchResult.Error.Exception);
+                        $"Pipeline error during dispatch: {dispatchError}",
+                        dispatchError.Exception);
+                }
             }
 
             activity?.SetTag("automaton.result", "ok");
@@ -171,17 +206,23 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
         {
             var pendingResult = await pendingTask.ConfigureAwait(false);
             if (pendingResult.IsErr)
+            {
+                pendingResult.TryGetError(out var pendingError);
                 throw new InvalidOperationException(
-                    $"Pipeline error during dispatch: {pendingResult.Error}",
-                    pendingResult.Error.Exception);
+                    $"Pipeline error during dispatch: {pendingError}",
+                    pendingError.Exception);
+            }
 
             for (var i = startIndex; i < events.Length; i++)
             {
                 var result = await _core.DispatchUnlocked(events[i], cancellationToken).ConfigureAwait(false);
                 if (result.IsErr)
+                {
+                    result.TryGetError(out var dispatchError);
                     throw new InvalidOperationException(
-                        $"Pipeline error during dispatch: {result.Error}",
-                        result.Error.Exception);
+                        $"Pipeline error during dispatch: {dispatchError}",
+                        dispatchError.Exception);
+                }
             }
 
             activity?.SetTag("automaton.result", "ok");
@@ -203,14 +244,15 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
             var decided = TDecider.Decide(_core.State, command);
             if (decided.IsOk)
             {
+                decided.TryGetValue(out var decidedEvents);
                 return DispatchEventsAndReturnOk(
-                    ContractGuards.RequireNonNullArray(decided.Value),
+                    ContractGuards.RequireNonNullArray(decidedEvents),
                     cancellationToken,
                     activity);
             }
             else
             {
-                var error = decided.Error;
+                decided.TryGetError(out var error);
                 activity?.SetTag("automaton.result", "error");
                 activity?.SetTag("automaton.error.type", error?.GetType().Name);
                 activity?.SetStatus(ActivityStatusCode.Ok);
@@ -247,9 +289,10 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
             var dispatchResult = dispatchTask.Result;
             if (dispatchResult.IsErr)
             {
+                dispatchResult.TryGetError(out var dispatchError);
                 throw new InvalidOperationException(
-                    $"Pipeline error during dispatch: {dispatchResult.Error}",
-                    dispatchResult.Error.Exception);
+                    $"Pipeline error during dispatch: {dispatchError}",
+                    dispatchError.Exception);
             }
         }
 
@@ -271,17 +314,23 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
         {
             var pendingResult = await pendingTask.ConfigureAwait(false);
             if (pendingResult.IsErr)
+            {
+                pendingResult.TryGetError(out var pendingError);
                 throw new InvalidOperationException(
-                    $"Pipeline error during dispatch: {pendingResult.Error}",
-                    pendingResult.Error.Exception);
+                    $"Pipeline error during dispatch: {pendingError}",
+                    pendingError.Exception);
+            }
 
             for (var i = startIndex; i < events.Length; i++)
             {
                 var result = await _core.DispatchUnlocked(events[i], cancellationToken).ConfigureAwait(false);
                 if (result.IsErr)
+                {
+                    result.TryGetError(out var dispatchError);
                     throw new InvalidOperationException(
-                        $"Pipeline error during dispatch: {result.Error}",
-                        result.Error.Exception);
+                        $"Pipeline error during dispatch: {dispatchError}",
+                        dispatchError.Exception);
+                }
             }
 
             activity?.SetTag("automaton.result", "ok");
@@ -310,14 +359,18 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
             var decided = TDecider.Decide(_core.State, command);
             if (decided.IsOk)
             {
-                var events = ContractGuards.RequireNonNullArray(decided.Value);
+                decided.TryGetValue(out var decidedEvents);
+                var events = ContractGuards.RequireNonNullArray(decidedEvents);
                 for (var i = 0; i < events.Length; i++)
                 {
                     var result = await _core.DispatchUnlocked(events[i], cancellationToken).ConfigureAwait(false);
                     if (result.IsErr)
+                    {
+                        result.TryGetError(out var dispatchError);
                         throw new InvalidOperationException(
-                            $"Pipeline error during dispatch: {result.Error}",
-                            result.Error.Exception);
+                            $"Pipeline error during dispatch: {dispatchError}",
+                            dispatchError.Exception);
+                    }
                 }
 
                 activity?.SetTag("automaton.result", "ok");
@@ -326,7 +379,7 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
             }
             else
             {
-                var error = decided.Error;
+                decided.TryGetError(out var error);
                 activity?.SetTag("automaton.result", "error");
                 activity?.SetTag("automaton.error.type", error?.GetType().Name);
                 activity?.SetStatus(ActivityStatusCode.Ok);

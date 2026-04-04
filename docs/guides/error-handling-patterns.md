@@ -9,23 +9,23 @@ Recipes for working with `Result<TSuccess, TError>` in pipelines.
 ```csharp
 var result = await runtime.Handle(new AddItemCommand(sku, qty));
 
-if (result.IsOk)
-    Console.WriteLine($"Order: {result.Value}");
-else
-    Console.WriteLine($"Error: {result.Error}");
+if (result.TryGetValue(out var order))
+    Console.WriteLine($"Order: {order}");
+else if (result.TryGetError(out var error))
+    Console.WriteLine($"Error: {error}");
 ```
 
 ### Pattern Match
 
 ```csharp
-var message = result.IsOk
-    ? $"Success: {result.Value}"
-    : result.Error switch
+var message = result.Match(
+    ok: value => $"Success: {value}",
+    err: error => error switch
     {
         OutOfStock(var sku) => $"Item {sku} is out of stock",
         InvalidQuantity(var qty) => $"Quantity {qty} is invalid",
-        _ => $"Unknown error: {result.Error}"
-    };
+        _ => $"Unknown error: {error}"
+    });
 ```
 
 ## Map (Functor)
@@ -118,6 +118,53 @@ var failFast = persister.Then(notifier);
 
 // Combine: both always run (returns first error)
 var bestEffort = persister.Combine(notifier);
+```
+
+## Guarded Staged Rejection Patterns
+
+With `GuardedDecidingRuntime`, errors can come from three stages:
+
+- `Validate` rejection (feasibility/invariants)
+- `Authorize` rejection (permission/policy)
+- `Decide` rejection (domain decision)
+
+Keep these as typed domain errors and map them at boundaries.
+
+```csharp
+var result = await guardedRuntime.Handle(principal, command);
+
+var http = result.MapError(error => error switch
+{
+    CounterError.InvalidAmount => new HttpError(400, "Invalid command payload"),
+    CounterError.Unauthorized => new HttpError(403, "Forbidden"),
+    CounterError.Overflow(var current, var amount, var max) =>
+        new HttpError(409, $"Overflow: {current} + {amount} exceeds {max}"),
+    _ => new HttpError(500, "Unhandled domain error")
+});
+```
+
+Use `DenialObserver` when you need audit trails without changing domain error types:
+
+```csharp
+var runtime = await GuardedDecidingRuntime<
+    CounterSecure,
+    CounterAuthorizationPolicy,
+    CounterValidationPolicy,
+    CounterPrincipal,
+    CounterState,
+    CounterCommand,
+    CounterEvent,
+    CounterEffect,
+    CounterError,
+    Unit>.Start(
+        default,
+        observer,
+        interpreter,
+        denialObserver: (kind, _, _, _, error) =>
+        {
+            audit.Write($"Guarded denial at {kind}: {error}");
+            return ValueTask.CompletedTask;
+        });
 ```
 
 ## See Also
