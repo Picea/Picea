@@ -188,32 +188,142 @@ public sealed class GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TVal
     /// <returns>
     /// Updated state on success, or a domain error when authorization, validation, or decision fails.
     /// </returns>
-    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
-    public async ValueTask<Result<TState, TError>> Handle(
+    public ValueTask<Result<TState, TError>> Handle(
         TPrincipal principal,
         TCommand command,
         CancellationToken cancellationToken = default)
     {
-        using var activity = AutomatonDiagnostics.Source.StartActivity("Automaton.GuardedDecider.Handle");
+        var activity = AutomatonDiagnostics.Source.StartActivity("Automaton.GuardedDecider.Handle");
         activity?.SetTag("automaton.type", _deciderTypeName);
 
         if (_core.IsThreadSafe)
         {
-            await _core.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                return await HandleUnlocked(principal, command, cancellationToken, activity).ConfigureAwait(false);
-            }
-            finally
-            {
-                _core.Gate.Release();
-            }
+            var waitTask = _core.Gate.WaitAsync(cancellationToken);
+            if (waitTask.IsCompletedSuccessfully)
+                return HandleAfterGate(principal, command, cancellationToken, activity);
+
+            return AwaitGateThenHandle(waitTask, principal, command, cancellationToken, activity);
         }
 
-        return await HandleUnlocked(principal, command, cancellationToken, activity).ConfigureAwait(false);
+        return HandleUnserialized(principal, command, cancellationToken, activity);
     }
 
-    private async ValueTask<Result<TState, TError>> HandleUnlocked(
+    private ValueTask<Result<TState, TError>> HandleUnserialized(
+        TPrincipal principal,
+        TCommand command,
+        CancellationToken cancellationToken,
+        Activity? activity)
+    {
+        try
+        {
+            var task = HandleCore(principal, command, cancellationToken, activity);
+            if (task.IsCompletedSuccessfully)
+            {
+                activity?.Dispose();
+                return new ValueTask<Result<TState, TError>>(task.Result);
+            }
+
+            return AwaitHandleCoreUnserialized(task, activity);
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.Dispose();
+            throw;
+        }
+    }
+
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    private static async ValueTask<Result<TState, TError>> AwaitHandleCoreUnserialized(
+        ValueTask<Result<TState, TError>> task,
+        Activity? activity)
+    {
+        using var _ = activity;
+        try
+        {
+            return await task.ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
+        }
+    }
+
+    private ValueTask<Result<TState, TError>> HandleAfterGate(
+        TPrincipal principal,
+        TCommand command,
+        CancellationToken cancellationToken,
+        Activity? activity)
+    {
+        try
+        {
+            var task = HandleCore(principal, command, cancellationToken, activity);
+            if (task.IsCompletedSuccessfully)
+            {
+                activity?.Dispose();
+                _core.Gate.Release();
+                return new ValueTask<Result<TState, TError>>(task.Result);
+            }
+
+            return AwaitHandleCoreThenRelease(task, activity);
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.Dispose();
+            _core.Gate.Release();
+            throw;
+        }
+    }
+
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    private async ValueTask<Result<TState, TError>> AwaitHandleCoreThenRelease(
+        ValueTask<Result<TState, TError>> task,
+        Activity? activity)
+    {
+        using var _ = activity;
+        try
+        {
+            return await task.ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
+        }
+        finally
+        {
+            _core.Gate.Release();
+        }
+    }
+
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    private async ValueTask<Result<TState, TError>> AwaitGateThenHandle(
+        Task waitTask,
+        TPrincipal principal,
+        TCommand command,
+        CancellationToken cancellationToken,
+        Activity? activity)
+    {
+        using var _ = activity;
+        await waitTask.ConfigureAwait(false);
+        try
+        {
+            return await HandleCore(principal, command, cancellationToken, activity).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
+        }
+        finally
+        {
+            _core.Gate.Release();
+        }
+    }
+
+    private async ValueTask<Result<TState, TError>> HandleCore(
         TPrincipal principal,
         TCommand command,
         CancellationToken cancellationToken,

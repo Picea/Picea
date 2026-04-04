@@ -150,11 +150,11 @@ public class GuardedDeciderTests
         await Assert.That(runtime.State.CurrentTemp).IsEqualTo(18m);
     }
 
-    private static async Task<GuardedDecidingRuntime<Thermostat, ThermostatAuthorizationPolicy, ThermostatValidationPolicy, ThermostatPrincipal, ThermostatState, ThermostatCommand,
+    private static async Task<GuardedDecidingRuntime<GuardedThermostat, ThermostatAuthorizationPolicy, ThermostatValidationPolicy, ThermostatPrincipal, ThermostatState, ThermostatCommand,
             ThermostatEvent, ThermostatEffect, ThermostatError, Unit>> CreateRuntime(
         DenialObserver<ThermostatPrincipal, ThermostatState, ThermostatCommand, ThermostatError>? denialObserver = null)
     {
-        return await GuardedDecidingRuntime<Thermostat, ThermostatAuthorizationPolicy, ThermostatValidationPolicy, ThermostatPrincipal, ThermostatState, ThermostatCommand,
+        return await GuardedDecidingRuntime<GuardedThermostat, ThermostatAuthorizationPolicy, ThermostatValidationPolicy, ThermostatPrincipal, ThermostatState, ThermostatCommand,
             ThermostatEvent, ThermostatEffect, ThermostatError, Unit>.Start(
                 default,
                 ThermostatObservers.NoOp,
