@@ -13,9 +13,10 @@
 //     Match       : (T → R) × (() → R) → Option<T> → R               (catamorphism)
 // =============================================================================
 
-namespace Picea;
-
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
+
+namespace Picea;
 
 /// <summary>
 /// A discriminated union representing either a value (<c>Some</c>) or no value (<c>None</c>).
@@ -53,9 +54,11 @@ public readonly struct Option<T>
     public bool IsNone => !_isSome;
 
     /// <summary>
-    /// The contained value. Throws if this is None.
+    /// Legacy accessor for the contained value. Prefer <see cref="Match{TOut}(Func{T, TOut}, Func{TOut})"/>
+    /// or <see cref="TryGetValue(out T)"/> for explicit handling.
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown when accessing Value on a None option.</exception>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public T Value => _isSome
         ? _value
         : throw new InvalidOperationException("Cannot access Value on a None option.");
@@ -88,14 +91,16 @@ public readonly struct Option<T>
     /// </summary>
     public Option<TNew> SelectMany<TIntermediate, TNew>(
         Func<T, Option<TIntermediate>> bind,
-        Func<T, TIntermediate, TNew> project) =>
-        _isSome
-            ? bind(_value) switch
-            {
-                { IsSome: true } intermediate => Option<TNew>.Some(project(_value, intermediate.Value)),
-                _ => Option<TNew>.None
-            }
-            : Option<TNew>.None;
+        Func<T, TIntermediate, TNew> project)
+    {
+        if (!_isSome)
+            return Option<TNew>.None;
+
+        var value = _value;
+        return bind(value).Match(
+            intermediate => Option<TNew>.Some(project(value, intermediate)),
+            () => Option<TNew>.None);
+    }
 
     /// <summary>
     /// Exhaustive fold (catamorphism) over both cases.

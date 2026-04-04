@@ -180,7 +180,8 @@ var runtime = await DecidingRuntime<Counter, CounterState, CounterCommand,
 var result = await runtime.Handle(new CounterCommand.Add(5));
 // result is Ok(CounterState { Count = 5 })
 
-Console.WriteLine(result.Value.Count); // 5
+if (result.TryGetValue(out var state))
+    Console.WriteLine(state.Count); // 5
 ```
 
 ### Rejected Commands
@@ -194,14 +195,48 @@ Console.WriteLine(runtime.State.Count); // still 5
 Console.WriteLine(runtime.Events.Count); // still 5 (no new events dispatched)
 ```
 
+## Optional: Secure Staged Validation
+
+Use the additive secure APIs when you want explicit stage boundaries:
+
+1. `Validate` for feasibility and invariants
+2. `Authorize` for caller permission checks
+3. `Decide` for event production
+
+`GuardedDecidingRuntime` runs these stages atomically in one `Handle` call.
+
+```csharp
+var guardedRuntime = await GuardedDecidingRuntime<CounterSecure, CounterState, CounterPrincipal,
+    CounterCommand, CounterEvent, CounterEffect, CounterError, Unit>.Start(
+        default,
+        observer,
+        interpreter,
+        denialObserver: (kind, error) =>
+        {
+            Console.WriteLine($"Denied at {kind}: {error}");
+            return Unit.Value;
+        });
+
+var result = await guardedRuntime.Handle(
+    new CounterPrincipal("alice", CounterRole.Operator),
+    new CounterCommand.Add(5));
+```
+
+Stage behavior:
+
+- `Validate` rejects -> `Err(error)`, no events dispatched
+- `Authorize` rejects -> `Err(error)`, no events dispatched
+- `Decide` rejects -> `Err(error)`, no events dispatched
+- All stages accept -> events dispatch through `Transition`, returning `Ok(state)`
+
 ### Pattern Matching on Results
 
 ```csharp
 var result = await runtime.Handle(new CounterCommand.Add(10));
 
-var message = result.IsOk
-    ? $"Success! Count is now {result.Value.Count}"
-    : result.Error switch
+var message = result.Match(
+    ok: state => $"Success! Count is now {state.Count}",
+    err: error => error switch
     {
         CounterError.Overflow o =>
             $"Overflow: {o.Current} + {o.Amount} exceeds max {o.Max}",
@@ -209,8 +244,8 @@ var message = result.IsOk
             $"Underflow: {u.Current} + {u.Amount} would go below zero",
         CounterError.AlreadyAtZero =>
             "Counter is already at zero",
-        _ => $"Unknown error: {result.Error}"
-    };
+        _ => $"Unknown error: {error}"
+    });
 
 Console.WriteLine(message);
 ```
@@ -227,8 +262,9 @@ public readonly struct Result<TSuccess, TError>
 
     public bool IsOk { get; }
     public bool IsErr { get; }
-    public TSuccess Value { get; }   // throws on Err
-    public TError Error { get; }     // throws on Ok
+    public bool TryGetValue(out TSuccess value);
+    public bool TryGetError(out TError error);
+    public TOut Match<TOut>(Func<TSuccess, TOut> ok, Func<TError, TOut> err);
 }
 ```
 
@@ -237,9 +273,9 @@ public readonly struct Result<TSuccess, TError>
 Use `IsOk`/`IsErr` with C# conditional expressions or `switch`:
 
 ```csharp
-var text = result.IsOk
-    ? $"Got {result.Value}"
-    : $"Failed: {result.Error}";
+var text = result.Match(
+    ok: value => $"Got {value}",
+    err: error => $"Failed: {error}");
 ```
 
 ### Map / Select (Functor)
@@ -342,7 +378,7 @@ public void Decide_IsPure_SameInputSameOutput()
 The Decider pattern has seven elements. The Automaton kernel provides four, the Decider adds three:
 
 | # | Element | Provider | Implementation |
-|---|---------|----------|----------------|
+| - | ------- | -------- | -------------- |
 | 1 | Command type | Type parameter | `TCommand` |
 | 2 | Event type | Type parameter | `TEvent` |
 | 3 | State type | Type parameter | `TState` |
@@ -371,4 +407,5 @@ public static bool IsTerminal(OrderState state) =>
 | Migrating from Automaton to Decider | [Upgrading to Decider](../guides/upgrading-to-decider.md) |
 | Result API signatures | [Result Reference](../reference/result.md) |
 | DecidingRuntime API | [Decider Reference](../reference/decider.md) |
+| Secure staged API and runtime | [Decider Reference](../reference/decider.md#additive-secure-staged-apis) |
 | Production ES with concurrency | [Picea.Patterns](../patterns/index.md) |

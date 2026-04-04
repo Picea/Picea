@@ -66,6 +66,27 @@ public static Result<CounterEvent[], CounterError> Decide(
 - `Err(error)` — command rejected; state remains unchanged
 - `Ok([])` — "accepted but nothing happened" (idempotent)
 
+## Additive Secure Staging
+
+The Decide-only `Decider` remains the default baseline.
+
+For stricter command hardening, an additive secure staged model introduces:
+
+- `Validator` — state-based feasibility and invariant checks
+- `Policy` — authorization checks (optionally using caller context)
+- `GuardedDecider` — explicit staged contract (`Validate` -> `Authorize` -> `Decide`)
+- `GuardedDecidingRuntime` — executes the staged flow atomically
+
+Conceptual flow:
+
+```text
+Command -> Validate -> Authorize -> Decide -> Events -> Transition -> State
+                     \-> Error
+                                 \-> Error
+```
+
+The first rejecting stage returns `Err(error)` and stops processing. If all stages pass, events are dispatched exactly like `Decider`.
+
 ## DecidingRuntime
 
 The `DecidingRuntime` wraps `AutomatonRuntime` and adds `Handle(command)`:

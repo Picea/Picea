@@ -32,9 +32,10 @@
 //     of the previous abstract record hierarchy.
 // =============================================================================
 
-namespace Picea;
-
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
+
+namespace Picea;
 
 /// <summary>
 /// A discriminated union representing either a success value or an error.
@@ -123,17 +124,21 @@ public readonly struct Result<TSuccess, TError>
     public bool IsErr => !_isOk;
 
     /// <summary>
-    /// The success value. Throws if this is an error result.
+    /// Legacy success accessor. Prefer <see cref="Match{TOut}(Func{TSuccess, TOut}, Func{TError, TOut})"/>
+    /// or <see cref="TryGetValue(out TSuccess)"/> for explicit error-safe handling.
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown when accessing Value on an Err result.</exception>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public TSuccess Value => _isOk
         ? _value
         : throw new InvalidOperationException("Cannot access Value on an Err result.");
 
     /// <summary>
-    /// The error value. Throws if this is a success result.
+    /// Legacy error accessor. Prefer <see cref="Match{TOut}(Func{TSuccess, TOut}, Func{TError, TOut})"/>
+    /// or <see cref="TryGetError(out TError)"/> for explicit error-safe handling.
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown when accessing Error on an Ok result.</exception>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public TError Error => !_isOk
         ? _error
         : throw new InvalidOperationException("Cannot access Error on an Ok result.");
@@ -166,14 +171,16 @@ public readonly struct Result<TSuccess, TError>
     /// </summary>
     public Result<TNew, TError> SelectMany<TIntermediate, TNew>(
         Func<TSuccess, Result<TIntermediate, TError>> bind,
-        Func<TSuccess, TIntermediate, TNew> project) =>
-        _isOk
-            ? bind(_value) switch
-            {
-                { IsOk: true } intermediate => Result<TNew, TError>.Ok(project(_value, intermediate.Value)),
-                var err => Result<TNew, TError>.Err(err.Error)
-            }
-            : Result<TNew, TError>.Err(_error);
+        Func<TSuccess, TIntermediate, TNew> project)
+    {
+        if (!_isOk)
+            return Result<TNew, TError>.Err(_error);
+
+        var value = _value;
+        return bind(value).Match(
+            intermediate => Result<TNew, TError>.Ok(project(value, intermediate)),
+            err => Result<TNew, TError>.Err(err));
+    }
 
     /// <summary>
     /// Maps a function over the error value.

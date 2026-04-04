@@ -6,10 +6,79 @@
 // Uses the Thermostat domain for all command/error scenarios.
 // =============================================================================
 
+using Picea.Commanding;
+
 namespace Picea.Tests;
 
 public class DeciderTests
 {
+
+    // =========================================================================
+    // GuardedDecidingRuntime — Authorize/Validate/Decide Pipeline
+    // =========================================================================
+
+    [Test]
+    public async Task GuardedHandle_AuthorizationDenied_ReturnsUnauthorizedAndObservesDenial()
+    {
+        var denials = new List<DenialKind>();
+        DenialObserver<ThermostatPrincipal, ThermostatState, ThermostatCommand, ThermostatError> denialObserver =
+            (kind, _, _, _, _) =>
+            {
+                denials.Add(kind);
+                return ValueTask.CompletedTask;
+            };
+
+        var runtime = await CreateGuardedRuntime(denialObserver);
+
+        var result = await runtime.Handle(
+            new ThermostatPrincipal(ThermostatRole.Guest),
+            new ThermostatCommand.SetTarget(24m));
+
+        await Assert.That(result.IsErr).IsTrue();
+        await Assert.That(result.Error).IsTypeOf<ThermostatError.Unauthorized>();
+        await Assert.That(runtime.State.TargetTemp).IsEqualTo(22m);
+        await Assert.That(denials).HasSingleItem();
+        await Assert.That(denials[0]).IsEqualTo(DenialKind.Authorization);
+    }
+
+    [Test]
+    public async Task GuardedHandle_ValidationDenied_ReturnsInvalidTargetAndObservesDenial()
+    {
+        var denials = new List<DenialKind>();
+        DenialObserver<ThermostatPrincipal, ThermostatState, ThermostatCommand, ThermostatError> denialObserver =
+            (kind, _, _, _, _) =>
+            {
+                denials.Add(kind);
+                return ValueTask.CompletedTask;
+            };
+
+        var runtime = await CreateGuardedRuntime(denialObserver);
+
+        var result = await runtime.Handle(
+            new ThermostatPrincipal(ThermostatRole.Operator),
+            new ThermostatCommand.SetTarget(Thermostat.MaxTarget + 1m));
+
+        await Assert.That(result.IsErr).IsTrue();
+        await Assert.That(result.Error).IsTypeOf<ThermostatError.InvalidTarget>();
+        await Assert.That(runtime.State.TargetTemp).IsEqualTo(22m);
+        await Assert.That(denials).HasSingleItem();
+        await Assert.That(denials[0]).IsEqualTo(DenialKind.Validation);
+    }
+
+    [Test]
+    public async Task GuardedHandle_Success_AuthorizeValidateDecideAndDispatch()
+    {
+        var runtime = await CreateGuardedRuntime();
+
+        var result = await runtime.Handle(
+            new ThermostatPrincipal(ThermostatRole.Operator),
+            new ThermostatCommand.RecordReading(18m));
+
+        await Assert.That(result.IsOk).IsTrue();
+        await Assert.That(result.Value.CurrentTemp).IsEqualTo(18m);
+        await Assert.That(result.Value.Heating).IsTrue();
+        await Assert.That(runtime.Events.Count).IsEqualTo(2);
+    }
 
     // =========================================================================
     // DecidingRuntime — Command Handling
@@ -169,6 +238,40 @@ public class DeciderTests
 
         await Assert.That(runtime.State).IsEqualTo(stateBeforeError);
         await Assert.That(runtime.Events.Count).IsEqualTo(eventCountBeforeError);
+    }
+
+    [Test]
+    public async Task Handle_ValidationDenial_ReleasesGate_ForFollowingCommand()
+    {
+        var runtime = await CreateRuntime();
+        var initialState = runtime.State;
+
+        var denied = await runtime.Handle(new ThermostatCommand.SetTarget(50m));
+
+        await Assert.That(denied.IsErr).IsTrue();
+        await Assert.That(runtime.State).IsEqualTo(initialState);
+        await Assert.That(runtime.Events).IsEmpty();
+
+        var allowed = await runtime.Handle(new ThermostatCommand.RecordReading(18m));
+
+        await Assert.That(allowed.IsOk).IsTrue();
+        await Assert.That(runtime.State.CurrentTemp).IsEqualTo(18m);
+        await Assert.That(runtime.State.Heating).IsTrue();
+    }
+
+    [Test]
+    public async Task Handle_Success_AppliesDecidedEvents_InOrder()
+    {
+        var runtime = await CreateRuntime();
+
+        var result = await runtime.Handle(new ThermostatCommand.SetTarget(25m));
+
+        await Assert.That(result.IsOk).IsTrue();
+        await Assert.That(runtime.Events.Count).IsEqualTo(2);
+        await Assert.That(runtime.Events[0]).IsTypeOf<ThermostatEvent.TargetSet>();
+        await Assert.That(runtime.Events[1]).IsTypeOf<ThermostatEvent.HeaterTurnedOn>();
+        await Assert.That(runtime.State.TargetTemp).IsEqualTo(25m);
+        await Assert.That(runtime.State.Heating).IsTrue();
     }
 
     [Test]
@@ -432,6 +535,18 @@ public class DeciderTests
     {
         return await DecidingRuntime<Thermostat, ThermostatState, ThermostatCommand,
             ThermostatEvent, ThermostatEffect, ThermostatError, Unit>.Start(default, ThermostatObservers.NoOp, ThermostatInterpreters.NoOp);
+    }
+
+    private static async Task<GuardedDecidingRuntime<Thermostat, ThermostatPrincipal, ThermostatState, ThermostatCommand,
+            ThermostatEvent, ThermostatEffect, ThermostatError, Unit>> CreateGuardedRuntime(
+        DenialObserver<ThermostatPrincipal, ThermostatState, ThermostatCommand, ThermostatError>? denialObserver = null)
+    {
+        return await GuardedDecidingRuntime<Thermostat, ThermostatPrincipal, ThermostatState, ThermostatCommand,
+            ThermostatEvent, ThermostatEffect, ThermostatError, Unit>.Start(
+                default,
+                ThermostatObservers.NoOp,
+                ThermostatInterpreters.NoOp,
+                denialObserver: denialObserver);
     }
 
     private sealed class NullEventDecider : Decider<ThermostatState, ThermostatCommand, ThermostatEvent, ThermostatEffect, ThermostatError, Unit>

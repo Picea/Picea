@@ -4,9 +4,12 @@
 
 Accepted
 
+Updated 2026-04-04: additive secure staged companion accepted.
+
 ## Context
 
 The basic Automaton (ADR 001) accepts any event — there's no validation layer. In real domains, we need to:
+
 - Validate user intent before producing facts
 - Reject invalid operations with structured errors
 - Separate "what the user wants" (commands) from "what happened" (events)
@@ -36,28 +39,48 @@ Key design choices:
 
 5. **Atomic Handle** — The entire `Handle` operation (Decide + all Dispatches) executes under a single semaphore acquisition. This prevents TOCTOU races where state changes between Decide reading the state and events being dispatched.
 
+6. **Additive secure staged companion** — We add secure staged APIs without changing the Decide-only baseline contract:
+
+    - `Validator<TState, TCommand, TError>`
+    - `Policy<TPrincipal, TState, TCommand, TError>`
+    - `GuardedDecider<TState, TPrincipal, TCommand, TEvent, TEffect, TError, TParameters>`
+    - `GuardedDecidingRuntime<...>`
+
+    The secure runtime executes `Validate -> Authorize -> Decide` atomically and short-circuits at the first rejection. This keeps Decide-only deciders fully valid while enabling explicit hardening where needed.
+
 ## Consequences
 
 ### Positive
+
 - **Non-breaking upgrade** — Adding `Decide` to an existing Automaton doesn't break any existing code
 - **Pure validation** — `Decide` is a pure function, testable without runtime infrastructure
 - **Typed errors** — Errors carry domain context (`Overflow(current, amount, max)`) not just strings
 - **Seven elements** — The Decider provides all seven elements of the Decider pattern: Command, Event, State, Initial State, Decide, Evolve, IsTerminal
+- **Optional secure hardening** — Teams can introduce explicit `Validate` and `Authorize` stages with `GuardedDecider` without forcing a migration for existing Decide-only models
 
 ### Negative
+
 - **Six type parameters** — `Decider<TState, TCommand, TEvent, TEffect, TError, TParameters>` is verbose. Mitigated by IDE support and the fact that these are all genuinely distinct concerns.
 - **Two runtime types** — Users must choose between `AutomatonRuntime` and `DecidingRuntime`. Mitigated by clear documentation: use `DecidingRuntime` when you have commands.
+- **Secure path complexity** — `GuardedDecider` introduces principal and staged-policy concerns. Mitigated by keeping it additive and opt-in, with `Decider` as the baseline.
 
 ## Alternatives Considered
 
 ### Validation as Middleware
+
 Add validation as an observer or interceptor rather than a language-level interface. Rejected because it doesn't provide type-safe error channels and doesn't integrate with the transition lifecycle.
 
 ### Command as a Special Event
+
 Treat commands as events that might fail. Rejected because it conflates intent (commands) with facts (events) and makes the type system less expressive.
 
 ### Separate Validation Service
+
 Validate commands in a separate service before dispatching events. Rejected because it creates TOCTOU races (state can change between validation and dispatch) and duplicates state access logic.
+
+### Replace Decider with GuardedDecider
+
+Make secure staging mandatory for all deciders. Rejected because it would force unnecessary migrations and add authorization concerns where not required by the domain.
 
 ## References
 

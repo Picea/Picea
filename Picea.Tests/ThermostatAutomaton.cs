@@ -14,6 +14,7 @@
 // =============================================================================
 
 using System.Diagnostics;
+using Picea.Commanding;
 
 namespace Picea.Tests;
 
@@ -45,6 +46,21 @@ public interface ThermostatCommand
     record struct Shutdown : ThermostatCommand;
 }
 
+/// <summary>
+/// Principal roles for secure command handling.
+/// </summary>
+public enum ThermostatRole
+{
+    Operator = 0,
+    Guest = 1
+}
+
+/// <summary>
+/// The principal issuing secure thermostat commands.
+/// </summary>
+/// <param name="Role">The role used by authorization policy.</param>
+public readonly record struct ThermostatPrincipal(ThermostatRole Role);
+
 // ── Events ────────────────────────────────────────────────────
 
 /// <summary>
@@ -75,6 +91,9 @@ public interface ThermostatError
 
     /// <summary>Shutdown requested when already shut down.</summary>
     record struct AlreadyShutdown : ThermostatError;
+
+    /// <summary>The principal is not allowed to execute this command.</summary>
+    record struct Unauthorized(string Reason) : ThermostatError;
 }
 
 // ── Effects ───────────────────────────────────────────────────
@@ -111,7 +130,8 @@ public interface ThermostatEffect
 /// </para>
 /// </remarks>
 public class Thermostat
-    : Decider<ThermostatState, ThermostatCommand, ThermostatEvent, ThermostatEffect, ThermostatError, Unit>
+    : Decider<ThermostatState, ThermostatCommand, ThermostatEvent, ThermostatEffect, ThermostatError, Unit>,
+    GuardedDecider<ThermostatPrincipal, ThermostatState, ThermostatCommand, ThermostatEvent, ThermostatEffect, ThermostatError, Unit>
 {
     public const decimal MinTarget = 5.0m;
     public const decimal MaxTarget = 40.0m;
@@ -196,6 +216,37 @@ public class Thermostat
 
             _ => throw new UnreachableException()
         };
+
+    public static Policy<ThermostatPrincipal, ThermostatState, ThermostatCommand, ThermostatError> Authorize =>
+        static (principal, _, command) =>
+            (principal.Role, command) switch
+            {
+                (ThermostatRole.Guest, ThermostatCommand.SetTarget) =>
+                    Result<ValidCommand<ThermostatCommand>, ThermostatError>.Err(
+                        new ThermostatError.Unauthorized("Guests cannot change target temperature.")),
+
+                (ThermostatRole.Guest, ThermostatCommand.Shutdown) =>
+                    Result<ValidCommand<ThermostatCommand>, ThermostatError>.Err(
+                        new ThermostatError.Unauthorized("Guests cannot shut down the thermostat.")),
+
+                _ => Result<ValidCommand<ThermostatCommand>, ThermostatError>.Ok(new ValidCommand<ThermostatCommand>(command))
+            };
+
+    public static Validator<ThermostatState, ThermostatCommand, ThermostatError> Validate =>
+        static (_, command) =>
+            command switch
+            {
+                ThermostatCommand.SetTarget(var target) when target is < MinTarget or > MaxTarget =>
+                    Result<ValidCommand<ThermostatCommand>, ThermostatError>.Err(
+                        new ThermostatError.InvalidTarget(target, MinTarget, MaxTarget)),
+
+                _ => Result<ValidCommand<ThermostatCommand>, ThermostatError>.Ok(new ValidCommand<ThermostatCommand>(command))
+            };
+
+    public static Result<ThermostatEvent[], ThermostatError> Decide(
+        ThermostatState state,
+        ValidCommand<ThermostatCommand> command) =>
+        Decide(state, command.Command);
 
     public static (ThermostatState State, ThermostatEffect Effect) Transition(
         ThermostatState state, ThermostatEvent @event) =>

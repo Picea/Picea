@@ -182,19 +182,18 @@ public class RuntimeTests
     [Test]
     public async Task ConcurrentDispatches_AreSerializedAndProduceCorrectFinalState()
     {
-        // Arrange: 100 concurrent temperature readings
+        // Fire 100 concurrent temperature readings.
         const int concurrency = 100;
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
             new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, ThermostatInterpreters.NoOp);
 
-        // Act: fire all dispatches concurrently
         var tasks = Enumerable.Range(0, concurrency)
             .Select(_ => runtime.Dispatch(new ThermostatEvent.TemperatureRecorded(15m)).AsTask())
             .ToArray();
 
         await Task.WhenAll(tasks);
 
-        // Assert: every event was applied — no lost updates
+        // Every event should be applied with no lost updates.
         await Assert.That(runtime.State.CurrentTemp).IsEqualTo(15m);
         await Assert.That(runtime.Events.Count).IsEqualTo(concurrency);
     }
@@ -202,14 +201,14 @@ public class RuntimeTests
     [Test]
     public async Task ConcurrentMixedDispatches_ProduceCorrectFinalState()
     {
-        // Arrange: 50 HeaterTurnedOn + 30 HeaterTurnedOff = 80 events total
+        // 50 HeaterTurnedOn + 30 HeaterTurnedOff = 80 events total.
         const int onCount = 50;
         const int offCount = 30;
 
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
             new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, ThermostatInterpreters.NoOp);
 
-        // Act: interleave on/off events concurrently
+        // Interleave on/off events concurrently.
         var onTasks = Enumerable.Range(0, onCount)
             .Select(_ => runtime.Dispatch(new ThermostatEvent.HeaterTurnedOn()).AsTask());
         var offTasks = Enumerable.Range(0, offCount)
@@ -217,7 +216,7 @@ public class RuntimeTests
 
         await Task.WhenAll(onTasks.Concat(offTasks));
 
-        // Assert: all events were serialized — no lost updates
+        // All events should be serialized with no lost updates.
         await Assert.That(runtime.Events.Count).IsEqualTo(onCount + offCount);
     }
 

@@ -31,6 +31,31 @@ Whether the automaton has reached a terminal state. Defaults to `false`.
 
 ---
 
+## Additive Secure Staged APIs
+
+The Decide-only `Decider` API above remains the baseline and stays fully supported.
+
+When you want explicit staged hardening, use the additive secure APIs:
+
+- `Validator` — stage 1, feasibility/invariant checks
+- `Policy` — stage 2, authorization checks (optional caller context)
+- `GuardedDecider` — staged command contract (`Validate` -> `Authorize` -> `Decide`)
+- `GuardedDecidingRuntime` — runtime wrapper that executes the staged pipeline atomically
+
+Pipeline semantics:
+
+1. `Validate` short-circuits on rejection
+2. `Authorize` short-circuits on rejection
+3. `Decide` produces events
+4. Events are dispatched through `Transition`
+
+Return behavior follows the same `Result` pattern as `Decider`:
+
+- `Ok(state)` — all stages accepted and events dispatched
+- `Err(error)` — rejected by any stage; state unchanged
+
+---
+
 ## DecidingRuntime&lt;TDecider, TState, TCommand, TEvent, TEffect, TError, TParameters&gt;
 
 ```csharp
@@ -56,6 +81,16 @@ public ValueTask<Result<TState, TError>> Handle(
 Validates and handles a command: Decide → Dispatch events → return new state or error.
 
 **Atomicity:** The entire Handle operation executes under a single lock acquisition.
+
+---
+
+## GuardedDecidingRuntime
+
+`GuardedDecidingRuntime` is the secure staged companion to `DecidingRuntime`.
+
+- Same runtime guarantees (`State`, `Events`, terminal checks, atomic `Handle`)
+- Adds staged command handling via `Validator` and `Policy` before `Decide`
+- Preserves the same success/error channel and state-transition behavior
 
 ---
 

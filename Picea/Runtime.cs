@@ -138,6 +138,9 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     private readonly object _snapshotLock = new();
     private readonly bool _threadSafe;
 
+    /// <summary>
+    /// Gets the current state snapshot.
+    /// </summary>
     public TState State
     {
         get
@@ -147,6 +150,9 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         }
     }
 
+    /// <summary>
+    /// Gets a snapshot of the dispatched events history.
+    /// </summary>
     public IReadOnlyList<TEvent> Events
     {
         get
@@ -170,6 +176,14 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     internal SemaphoreSlim Gate => _gate;
     internal bool IsThreadSafe => _threadSafe;
 
+    /// <summary>
+    /// Creates an automaton runtime from an initial state and pipeline capabilities.
+    /// </summary>
+    /// <param name="initialState">The initial state snapshot.</param>
+    /// <param name="observer">Observer pipeline capability for transition side effects.</param>
+    /// <param name="interpreter">Interpreter pipeline capability for feedback events.</param>
+    /// <param name="threadSafe">Whether dispatch operations are serialized through a gate.</param>
+    /// <param name="trackEvents">Whether dispatched events are stored in the runtime history.</param>
     public AutomatonRuntime(
         TState initialState,
         Observer<TState, TEvent, TEffect> observer,
@@ -184,6 +198,16 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         _events = trackEvents ? [] : null;
     }
 
+    /// <summary>
+    /// Starts a runtime by initializing state through the automaton and interpreting startup effects.
+    /// </summary>
+    /// <param name="parameters">The automaton initialization parameters.</param>
+    /// <param name="observer">Observer pipeline capability for transition side effects.</param>
+    /// <param name="interpreter">Interpreter pipeline capability for feedback events.</param>
+    /// <param name="threadSafe">Whether dispatch operations are serialized through a gate.</param>
+    /// <param name="trackEvents">Whether dispatched events are stored in the runtime history.</param>
+    /// <param name="cancellationToken">Token used to cancel initialization and startup interpretation.</param>
+    /// <returns>A started runtime with initialized state.</returns>
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     public static async ValueTask<AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParameters>> Start(
         TParameters parameters,
@@ -205,6 +229,15 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         return runtime;
     }
 
+    /// <summary>
+    /// Dispatches an event through transition, observer, and interpreter pipelines.
+    /// </summary>
+    /// <param name="event">The event to dispatch.</param>
+    /// <param name="cancellationToken">Token used to cancel dispatch execution.</param>
+    /// <returns>
+    /// <see cref="Result{TSuccess, TError}.Ok(TSuccess)"/> when dispatch succeeds,
+    /// otherwise a pipeline error.
+    /// </returns>
     public ValueTask<Result<Unit, PipelineError>> Dispatch(TEvent @event, CancellationToken cancellationToken = default)
     {
         var activity = AutomatonDiagnostics.Source.StartActivity("Automaton.Dispatch");
@@ -235,7 +268,10 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
                 if (result.IsOk)
                     activity?.SetStatus(ActivityStatusCode.Ok);
                 else
-                    activity?.SetStatus(ActivityStatusCode.Error, result.Error.Message);
+                {
+                    result.TryGetError(out var error);
+                    activity?.SetStatus(ActivityStatusCode.Error, error.Message);
+                }
                 activity?.Dispose();
                 return new ValueTask<Result<Unit, PipelineError>>(result);
             }
@@ -261,7 +297,10 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
             if (result.IsOk)
                 activity?.SetStatus(ActivityStatusCode.Ok);
             else
-                activity?.SetStatus(ActivityStatusCode.Error, result.Error.Message);
+            {
+                result.TryGetError(out var error);
+                activity?.SetStatus(ActivityStatusCode.Error, error.Message);
+            }
             return result;
         }
         catch (Exception ex)
@@ -283,7 +322,10 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
                 if (result.IsOk)
                     activity?.SetStatus(ActivityStatusCode.Ok);
                 else
-                    activity?.SetStatus(ActivityStatusCode.Error, result.Error.Message);
+                {
+                    result.TryGetError(out var error);
+                    activity?.SetStatus(ActivityStatusCode.Error, error.Message);
+                }
                 activity?.Dispose();
                 _gate.Release();
                 return new ValueTask<Result<Unit, PipelineError>>(result);
@@ -311,7 +353,10 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
             if (result.IsOk)
                 activity?.SetStatus(ActivityStatusCode.Ok);
             else
-                activity?.SetStatus(ActivityStatusCode.Error, result.Error.Message);
+            {
+                result.TryGetError(out var error);
+                activity?.SetStatus(ActivityStatusCode.Error, error.Message);
+            }
             return result;
         }
         catch (Exception ex)
@@ -337,7 +382,10 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
             if (result.IsOk)
                 activity?.SetStatus(ActivityStatusCode.Ok);
             else
-                activity?.SetStatus(ActivityStatusCode.Error, result.Error.Message);
+            {
+                result.TryGetError(out var error);
+                activity?.SetStatus(ActivityStatusCode.Error, error.Message);
+            }
             return result;
         }
         catch (Exception ex)
@@ -556,11 +604,16 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         {
             var interpreterResult = interpreterTask.Result;
             if (interpreterResult.IsErr)
+            {
+                interpreterResult.TryGetError(out var interpreterError);
                 return new ValueTask<Result<Unit, PipelineError>>(
-                    Result<Unit, PipelineError>.Err(interpreterResult.Error));
+                    Result<Unit, PipelineError>.Err(interpreterError));
+            }
+
+            interpreterResult.TryGetValue(out var feedbackEvents);
 
             return DispatchFeedbackEventsWithResult(
-                ContractGuards.RequireNonNullArray(interpreterResult.Value),
+                ContractGuards.RequireNonNullArray(feedbackEvents),
                 cancellationToken,
                 depth);
         }
@@ -575,10 +628,15 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     {
         var interpreterResult = await interpreterTask.ConfigureAwait(false);
         if (interpreterResult.IsErr)
-            return Result<Unit, PipelineError>.Err(interpreterResult.Error);
+        {
+            interpreterResult.TryGetError(out var interpreterError);
+            return Result<Unit, PipelineError>.Err(interpreterError);
+        }
+
+        interpreterResult.TryGetValue(out var feedbackEvents);
 
         return await DispatchFeedbackEventsWithResult(
-                ContractGuards.RequireNonNullArray(interpreterResult.Value),
+                ContractGuards.RequireNonNullArray(feedbackEvents),
                 cancellationToken,
                 depth)
             .ConfigureAwait(false);
@@ -619,7 +677,10 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         {
             var result = resultTask.Result;
             if (result.IsErr)
-                ThrowInterpreterPipelineError(result.Error);
+            {
+                result.TryGetError(out var error);
+                ThrowInterpreterPipelineError(error);
+            }
             return ValueTask.CompletedTask;
         }
 
@@ -635,7 +696,10 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     {
         var result = await resultTask.ConfigureAwait(false);
         if (result.IsErr)
-            ThrowInterpreterPipelineError(result.Error);
+        {
+            result.TryGetError(out var error);
+            ThrowInterpreterPipelineError(error);
+        }
     }
 }
 
@@ -700,8 +764,9 @@ public static class ObserverExtensions
             if (task.IsCompletedSuccessfully)
             {
                 var result = task.Result;
+                result.TryGetError(out var error);
                 return result.IsErr
-                    ? new ValueTask<Result<Unit, PipelineError>>(handler(result.Error))
+                    ? new ValueTask<Result<Unit, PipelineError>>(handler(error))
                     : task;
             }
 
@@ -714,7 +779,8 @@ public static class ObserverExtensions
         Func<PipelineError, Result<Unit, PipelineError>> handler)
     {
         var result = await task.ConfigureAwait(false);
-        return result.IsErr ? handler(result.Error) : result;
+        result.TryGetError(out var error);
+        return result.IsErr ? handler(error) : result;
     }
 
     public static Observer<TState, TEvent, TEffect> Combine<TState, TEvent, TEffect>(
@@ -781,7 +847,7 @@ public static class InterpreterExtensions
                 if (r1.IsErr)
                     return new ValueTask<Result<TEvent[], PipelineError>>(r1);
 
-                var firstEvents = r1.Value;
+                r1.TryGetValue(out var firstEvents);
                 var t2 = second(effect);
                 if (t2.IsCompletedSuccessfully)
                 {
@@ -789,7 +855,7 @@ public static class InterpreterExtensions
                     if (r2.IsErr)
                         return new ValueTask<Result<TEvent[], PipelineError>>(r2);
 
-                    var secondEvents = r2.Value;
+                    r2.TryGetValue(out var secondEvents);
                     var combined = ConcatEvents(firstEvents, secondEvents);
                     return new ValueTask<Result<TEvent[], PipelineError>>(
                         Result<TEvent[], PipelineError>.Ok(combined));
@@ -815,9 +881,10 @@ public static class InterpreterExtensions
         ValueTask<Result<TEvent[], PipelineError>> secondTask)
     {
         var r2 = await secondTask.ConfigureAwait(false);
+        r2.TryGetValue(out var secondEvents);
         return r2.IsErr
             ? r2
-            : Result<TEvent[], PipelineError>.Ok(ConcatEvents(firstEvents, r2.Value));
+            : Result<TEvent[], PipelineError>.Ok(ConcatEvents(firstEvents, secondEvents));
     }
 
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
@@ -831,9 +898,11 @@ public static class InterpreterExtensions
             return r1;
 
         var r2 = await second(effect).ConfigureAwait(false);
+        r1.TryGetValue(out var firstEvents);
+        r2.TryGetValue(out var secondEvents);
         return r2.IsErr
             ? r2
-            : Result<TEvent[], PipelineError>.Ok(ConcatEvents(r1.Value, r2.Value));
+            : Result<TEvent[], PipelineError>.Ok(ConcatEvents(firstEvents, secondEvents));
     }
 
     public static Interpreter<TEffect, TEvent> Where<TEffect, TEvent>(
@@ -859,8 +928,9 @@ public static class InterpreterExtensions
             if (task.IsCompletedSuccessfully)
             {
                 var result = task.Result;
+                result.TryGetError(out var error);
                 return result.IsErr
-                    ? new ValueTask<Result<TEvent[], PipelineError>>(handler(result.Error))
+                    ? new ValueTask<Result<TEvent[], PipelineError>>(handler(error))
                     : task;
             }
 
@@ -873,6 +943,7 @@ public static class InterpreterExtensions
         Func<PipelineError, Result<TEvent[], PipelineError>> handler)
     {
         var result = await task.ConfigureAwait(false);
-        return result.IsErr ? handler(result.Error) : result;
+        result.TryGetError(out var error);
+        return result.IsErr ? handler(error) : result;
     }
 }
