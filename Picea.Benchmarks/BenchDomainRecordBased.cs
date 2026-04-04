@@ -90,20 +90,28 @@ public class RecBenchDecider
         RecBenchState state, RecBenchEvent @event) =>
         RecBenchAutomaton.Transition(state, @event);
 
-    public static Result<RecBenchEvent[], RecBenchError> Decide(
+    public static Validated<RecBenchCommand, RecBenchError> Validate(
         RecBenchState state, RecBenchCommand command) =>
         command switch
         {
-            RecBenchCommand.Add(var n) =>
-                Result<RecBenchEvent[], RecBenchError>
-                    .Ok([new RecBenchEvent.Increment(n)]),
-
             RecBenchCommand.Reject =>
-                Result<RecBenchEvent[], RecBenchError>
-                    .Err(RecBenchError.RejectedInstance),
+                new Validated<RecBenchCommand, RecBenchError>.Invalid(RecBenchError.RejectedInstance),
 
-            _ => throw new UnreachableException()
+            _ => new Validated<RecBenchCommand, RecBenchError>.Valid(command)
         };
+
+    public static Result<RecBenchEvent[], RecBenchError> Decide(
+        RecBenchState state, Validated<RecBenchCommand, RecBenchError> validated) =>
+        validated is not Validated<RecBenchCommand, RecBenchError>.Valid(var command)
+            ? throw new UnreachableException()
+            : command switch
+            {
+                RecBenchCommand.Add(var n) =>
+                    Result<RecBenchEvent[], RecBenchError>
+                        .Ok([new RecBenchEvent.Increment(n)]),
+
+                _ => throw new UnreachableException()
+            };
 }
 
 // ── Observers & Interpreters ──────────────────────────────────

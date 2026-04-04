@@ -2,7 +2,7 @@
 
 `namespace Picea`
 
-Command validation layer for Automatons.
+Staged command-processing layer for Automatons.
 
 ---
 
@@ -12,14 +12,60 @@ Command validation layer for Automatons.
 public interface Decider<TState, TCommand, TEvent, TEffect, TError, TParameters>
     : Automaton<TState, TEvent, TEffect, TParameters>
 {
-    static abstract Result<TEvent[], TError> Decide(TState state, TCommand command);
+    static abstract Validated<TCommand, TError> Validate(TState state, TCommand command);
+    static virtual Result<Unit, TError> Authorize(TState state, Validated<TCommand, TError> command) =>
+        Result<Unit, TError>.Ok(Unit.Value);
+    static abstract Result<TEvent[], TError> Decide(TState state, Validated<TCommand, TError> command);
     static virtual bool IsTerminal(TState state) => false;
 }
 ```
 
+## Validated&lt;TCommand, TError&gt;
+
+```csharp
+public abstract record Validated<TCommand, TError>
+{
+    public sealed record Valid(TCommand Value) : Validated<TCommand, TError>;
+    public sealed record Invalid(TError InvalidError) : Validated<TCommand, TError>;
+}
+```
+
+The output of the validation stage.
+
+- `Valid(command)` — command is feasible for the current state.
+- `Invalid(error)` — command violates a domain invariant.
+
+### Validate
+
+```csharp
+static abstract Validated<TCommand, TError> Validate(TState state, TCommand command);
+```
+
+Stage 1 (feasibility). Must be pure.
+
+### Authorize
+
+```csharp
+static virtual Result<Unit, TError> Authorize(
+    TState state, Validated<TCommand, TError> command) =>
+    Result<Unit, TError>.Ok(Unit.Value);
+```
+
+Stage 2 (permission). Must be pure.
+
+- `Ok(Unit.Value)` — authorized.
+- `Err(error)` — denied.
+
+The default implementation allows all validated commands.
+
 ### Decide
 
-Validates a command against the current state, producing events or an error. **This function must be pure.**
+```csharp
+static abstract Result<TEvent[], TError> Decide(
+    TState state, Validated<TCommand, TError> command);
+```
+
+Stage 3 (decision). Must be pure.
 
 - `Ok(events)` — command accepted; events will be dispatched through Transition.
 - `Err(error)` — command rejected; state remains unchanged.
@@ -53,9 +99,44 @@ public ValueTask<Result<TState, TError>> Handle(
     TCommand command, CancellationToken cancellationToken = default)
 ```
 
-Validates and handles a command: Decide → Dispatch events → return new state or error.
+Handles a command using the staged pipeline:
+
+1. `Validate` (short-circuit on `Invalid`)
+2. `Authorize` (short-circuit on `Err`)
+3. `Decide` (short-circuit on `Err`)
+4. Dispatch all produced events through `Transition`
+
+Return value:
+
+- `Ok(state)` — command accepted and all events were dispatched.
+- `Err(error)` — command rejected by any stage; state remains unchanged.
 
 **Atomicity:** The entire Handle operation executes under a single lock acquisition.
+
+---
+
+## DeciderComposition
+
+Helper API for explicit functional composition of staged deciders.
+
+```csharp
+public static class DeciderComposition
+{
+    public static Result<Validated<TCommand, TError>, TError> ValidateToResult<TCommand, TError>(
+        Validated<TCommand, TError> validated);
+
+    public static Result<Validated<TCommand, TError>, TError> AuthorizeToResult<TCommand, TError>(
+        Validated<TCommand, TError> validated,
+        Result<Unit, TError> authorization);
+
+    public static Result<TEvent[], TError> Compose<TState, TCommand, TEvent, TError>(
+        TState state,
+        TCommand command,
+        Func<TState, TCommand, Validated<TCommand, TError>> validate,
+        Func<TState, Validated<TCommand, TError>, Result<Unit, TError>> authorize,
+        Func<TState, Validated<TCommand, TError>, Result<TEvent[], TError>> decide);
+}
+```
 
 ---
 
@@ -63,5 +144,5 @@ Validates and handles a command: Decide → Dispatch events → return new state
 
 - [The Decider](../concepts/the-decider.md) — conceptual explanation
 - [Upgrading to Decider](../guides/upgrading-to-decider.md) — migration guide
-- [Result](result.md) — the return type of Decide
+- [Result](result.md) — the error/success channel used by Authorize and Decide
 - [Tutorial 05](../tutorials/05-command-validation.md) — full walkthrough

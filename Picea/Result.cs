@@ -32,10 +32,10 @@
 //     of the previous abstract record hierarchy.
 // =============================================================================
 
-namespace Picea;
 
 using System.Runtime.CompilerServices;
 
+namespace Picea;
 /// <summary>
 /// A discriminated union representing either a success value or an error.
 /// </summary>

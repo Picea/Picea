@@ -8,10 +8,30 @@ The Decider adds command validation to the Automaton — separating intent (comm
 public interface Decider<TState, TCommand, TEvent, TEffect, TError, TParameters>
     : Automaton<TState, TEvent, TEffect, TParameters>
 {
-    static abstract Result<TEvent[], TError> Decide(TState state, TCommand command);
+    static abstract Validated<TCommand, TError> Validate(TState state, TCommand command);
+    static virtual Result<Unit, TError> Authorize(TState state, Validated<TCommand, TError> command) =>
+        Result<Unit, TError>.Ok(Unit.Value);
+    static abstract Result<TEvent[], TError> Decide(TState state, Validated<TCommand, TError> command);
     static virtual bool IsTerminal(TState state) => false;
 }
 ```
+
+## The Staged Pipeline
+
+```text
+Command (intent)
+  └─▶ Validate   : Command -> Validated<Command, Error>
+        ├─ Invalid(error) -> reject
+        └─ Valid(command')
+              └─▶ Authorize : Validated<Command, Error> -> Result<Unit, Error>
+                    ├─ Err(error) -> reject
+                    └─ Ok(Unit)
+                          └─▶ Decide : Validated<Command, Error> -> Result<Events, Error>
+                                ├─ Err(error) -> reject
+                                └─ Ok(events) -> dispatch through Transition
+```
+
+All stages are pure functions and short-circuit on first rejection.
 
 ## The Seven Elements
 
@@ -23,43 +43,72 @@ The Decider pattern (Chassaing, 2021) has seven elements. The Automaton kernel p
 | 2 | Event type | Type parameter | `TEvent` |
 | 3 | State type | Type parameter | `TState` |
 | 4 | Initial state | Automaton | `Initialize(parameters)` |
-| 5 | **Decide** | **Decider** | `Decide(state, command)` |
-| 6 | Evolve | Automaton | `Transition(state, event)` |
-| 7 | **Is terminal** | **Decider** | `IsTerminal(state)` |
+| 5 | **Validate** | **Decider** | `Validate(state, command)` |
+| 6 | **Authorize** | **Decider** | `Authorize(state, validated)` |
+| 7 | **Decide** | **Decider** | `Decide(state, validated)` |
+| 8 | Evolve | Automaton | `Transition(state, event)` |
+| 9 | **Is terminal** | **Decider** | `IsTerminal(state)` |
 
 ## Intent vs. Fact
 
 ```text
-Command (intent)  →  Decide  →  Events (facts)  →  Transition  →  State
-                         │
-                         └──▶  Error (rejection)
+Command (intent)  →  Validate  →  Authorize  →  Decide  →  Events (facts)  →  Transition  →  State
+                         │            │            │
+                         └────────────┴────────────┴──▶  Error (rejection)
 ```
 
 - **Commands** describe what the user *wants* to do
 - **Events** describe what *actually happened*
 - **Errors** describe why a command was *rejected*
 
-## The Decide Function
+## Validate: Feasibility
 
-`Decide` is pure: given state and command, it returns either events or an error:
+`Validate` checks domain invariants and returns a typed proof object:
 
 ```csharp
-public static Result<CounterEvent[], CounterError> Decide(
+public static Validated<CounterCommand, CounterError> Validate(
     CounterState state, CounterCommand command) =>
     command switch
     {
         CounterCommand.Add(var n) when state.Count + n > MaxCount =>
-            Result<CounterEvent[], CounterError>
-                .Err(new CounterError.Overflow(state.Count, n, MaxCount)),
+            new Validated<CounterCommand, CounterError>.Invalid(
+                new CounterError.Overflow(state.Count, n, MaxCount)),
 
-        CounterCommand.Add(var n) =>
-            Result<CounterEvent[], CounterError>
-                .Ok(Enumerable.Repeat<CounterEvent>(
-                    new CounterEvent.Increment(), n).ToArray()),
-
-        // ... other cases
-        _ => throw new UnreachableException()
+        _ => new Validated<CounterCommand, CounterError>.Valid(command)
     };
+```
+
+## Authorize: Permission
+
+`Authorize` checks whether a validated command is permitted in the current state.
+
+```csharp
+public static Result<Unit, CounterError> Authorize(
+    CounterState state, Validated<CounterCommand, CounterError> validated) =>
+    Result<Unit, CounterError>.Ok(Unit.Value);
+```
+
+- `Ok(Unit.Value)` means permitted.
+- `Err(error)` means denied.
+
+## Decide: Event Production
+
+`Decide` is pure: given state and a validated command, it returns either events or an error:
+
+```csharp
+public static Result<CounterEvent[], CounterError> Decide(
+    CounterState state, Validated<CounterCommand, CounterError> validated) =>
+    validated is not Validated<CounterCommand, CounterError>.Valid(var command)
+        ? throw new UnreachableException()
+        : command switch
+        {
+            CounterCommand.Add(var n) =>
+                Result<CounterEvent[], CounterError>
+                    .Ok(Enumerable.Repeat<CounterEvent>(
+                        new CounterEvent.Increment(), n).ToArray()),
+
+            _ => throw new UnreachableException()
+        };
 ```
 
 - `Ok(events)` — command accepted; events will be dispatched
@@ -84,7 +133,22 @@ var overflow = await runtime.Handle(new CounterCommand.Add(200));
 
 ### Atomicity
 
-The entire `Handle` operation (Decide + all Dispatches) executes under a single lock acquisition. This prevents TOCTOU races.
+The entire `Handle` operation (Validate + Authorize + Decide + all Dispatches) executes under a single lock acquisition. This prevents TOCTOU races.
+
+## Formal Composition
+
+The `DeciderComposition` helper provides explicit monadic composition for the three stages:
+
+```csharp
+var result = DeciderComposition.Compose(
+    state,
+    command,
+    validate: Counter.Validate,
+    authorize: Counter.Authorize,
+    decide: Counter.Decide);
+```
+
+This keeps the short-circuit behavior explicit and law-testable.
 
 ## Non-Breaking Upgrade
 
@@ -92,7 +156,7 @@ Because `Decider<...> : Automaton<...>`, adding command validation is a non-brea
 
 1. Define command and error types
 2. Change `Automaton<...>` to `Decider<...>`
-3. Add the `Decide` function
+3. Add `Validate`, optionally override `Authorize`, and add `Decide`
 4. All existing code continues to work — the Decider is still a valid Automaton
 
 This follows the [Open/Closed Principle](https://en.wikipedia.org/wiki/Open%E2%80%93closed_principle): open for extension, closed for modification.
