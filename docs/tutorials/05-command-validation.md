@@ -33,10 +33,15 @@ In real systems, you need to validate *intent* before producing *facts*:
 
 ## The Decider Pattern
 
-The [Decider pattern](https://thinkbeforecoding.com/post/2021/12/17/functional-event-sourcing-decider) (Jérémie Chassaing, 2021) adds a validation layer:
+The [Decider pattern](https://thinkbeforecoding.com/post/2021/12/17/functional-event-sourcing-decider) (Jérémie Chassaing, 2021) adds a staged command layer:
 
 ```text
-Command → Decide(state, command) → Result<Events, Error> → Transition(state, event)
+Command
+    -> Validate(state, command)
+    -> Authorize(state, validated, authorizationContext)
+    -> Decide(state, validated)
+    -> Result<Events, Error>
+    -> Transition(state, event)
 ```
 
 It separates:
@@ -44,7 +49,9 @@ It separates:
 | Concept | Type | Purpose |
 | ------- | ---- | ------- |
 | Intent | Command | What the user wants to do |
-| Decision | Decide | Validates intent against current state |
+| Feasibility | Validate | Checks whether command can be processed |
+| Permission | Authorize | Checks whether caller is allowed |
+| Decision | Decide | Produces events from validated + authorized intent |
 | Fact | Event | What actually happened (immutable) |
 | Evolution | Transition | How the state changes |
 
@@ -77,14 +84,22 @@ A Decider extends the Automaton interface:
 public interface Decider<TState, TCommand, TEvent, TEffect, TError, TParameters>
     : Automaton<TState, TEvent, TEffect, TParameters>
 {
+    static abstract Validated<TCommand, TError> Validate(TState state, TCommand command);
+
+    static virtual Result<Unit, TError> Authorize<TAuthorizationContext>(
+        TState state,
+        Validated<TCommand, TError> command,
+        TAuthorizationContext authorizationContext) =>
+        Result<Unit, TError>.Ok(Unit.Value);
+
     static abstract Result<TEvent[], TError> Decide(
-        TState state, TCommand command);
+        TState state, Validated<TCommand, TError> command);
 
     static virtual bool IsTerminal(TState state) => false;
 }
 ```
 
-The `Decide` function is pure: given state and command, it returns either events or an error. No side effects, no I/O.
+All three stages are pure. `Validate` and `Authorize` can reject early; `Decide` produces events only for validated commands.
 
 ```csharp
 public class Counter
@@ -95,44 +110,59 @@ public class Counter
     public static (CounterState, CounterEffect) Initialize(Unit _) =>
         (new CounterState(0), new CounterEffect.None());
 
-    public static Result<CounterEvent[], CounterError> Decide(
+    public static Validated<CounterCommand, CounterError> Validate(
         CounterState state, CounterCommand command) =>
         command switch
         {
             // Overflow: would exceed max
             CounterCommand.Add(var n) when state.Count + n > MaxCount =>
-                Result<CounterEvent[], CounterError>
-                    .Err(new CounterError.Overflow(state.Count, n, MaxCount)),
+                new Validated<CounterCommand, CounterError>.Invalid(
+                    new CounterError.Overflow(state.Count, n, MaxCount)),
 
             // Underflow: would go below zero
             CounterCommand.Add(var n) when state.Count + n < 0 =>
-                Result<CounterEvent[], CounterError>
-                    .Err(new CounterError.Underflow(state.Count, n)),
-
-            // Valid positive: produce N increment events
-            CounterCommand.Add(var n) when n >= 0 =>
-                Result<CounterEvent[], CounterError>
-                    .Ok(Enumerable.Repeat<CounterEvent>(
-                        new CounterEvent.Increment(), n).ToArray()),
-
-            // Valid negative: produce |N| decrement events
-            CounterCommand.Add(var n) =>
-                Result<CounterEvent[], CounterError>
-                    .Ok(Enumerable.Repeat<CounterEvent>(
-                        new CounterEvent.Decrement(), Math.Abs(n)).ToArray()),
+                new Validated<CounterCommand, CounterError>.Invalid(
+                    new CounterError.Underflow(state.Count, n)),
 
             // Reset at zero: nothing to reset
             CounterCommand.Reset when state.Count is 0 =>
-                Result<CounterEvent[], CounterError>
-                    .Err(new CounterError.AlreadyAtZero()),
+                new Validated<CounterCommand, CounterError>.Invalid(
+                    new CounterError.AlreadyAtZero()),
 
-            // Valid reset
-            CounterCommand.Reset =>
-                Result<CounterEvent[], CounterError>
-                    .Ok([new CounterEvent.Reset()]),
-
-            _ => throw new UnreachableException()
+            _ => new Validated<CounterCommand, CounterError>.Valid(command)
         };
+
+    public static Result<Unit, CounterError> Authorize<TAuthorizationContext>(
+        CounterState state,
+        Validated<CounterCommand, CounterError> validated,
+        TAuthorizationContext authorizationContext) =>
+        Result<Unit, CounterError>.Ok(Unit.Value);
+
+    public static Result<CounterEvent[], CounterError> Decide(
+        CounterState state, Validated<CounterCommand, CounterError> validated) =>
+        validated is not Validated<CounterCommand, CounterError>.Valid(var command)
+            ? throw new UnreachableException()
+            : command switch
+            {
+                // Valid positive: produce N increment events
+                CounterCommand.Add(var n) when n >= 0 =>
+                    Result<CounterEvent[], CounterError>
+                        .Ok(Enumerable.Repeat<CounterEvent>(
+                            new CounterEvent.Increment(), n).ToArray()),
+
+                // Valid negative: produce |N| decrement events
+                CounterCommand.Add(var n) =>
+                    Result<CounterEvent[], CounterError>
+                        .Ok(Enumerable.Repeat<CounterEvent>(
+                            new CounterEvent.Decrement(), Math.Abs(n)).ToArray()),
+
+                // Valid reset
+                CounterCommand.Reset =>
+                    Result<CounterEvent[], CounterError>
+                        .Ok([new CounterEvent.Reset()]),
+
+                _ => throw new UnreachableException()
+            };
 
     public static (CounterState, CounterEffect) Transition(
         CounterState state, CounterEvent @event) =>
@@ -154,7 +184,7 @@ Because `Decider<...> : Automaton<...>`, the Counter is still a valid automaton.
 
 ## Step 3: Use DecidingRuntime
 
-The `DecidingRuntime` wraps `AutomatonRuntime` and adds `Handle(command)`:
+The `DecidingRuntime` wraps `AutomatonRuntime` and adds `Handle(command, ...)` with an optional authorization context overload:
 
 ```csharp
 using Picea;
@@ -172,12 +202,14 @@ Interpreter<CounterEffect, CounterEvent> interpreter =
 
 var runtime = await DecidingRuntime<Counter, CounterState, CounterCommand,
     CounterEvent, CounterEffect, CounterError, Unit>.Start(default, observer, interpreter);
+
+var authorizationContext = Unit.Value;
 ```
 
 ### Successful Commands
 
 ```csharp
-var result = await runtime.Handle(new CounterCommand.Add(5));
+var result = await runtime.Handle(new CounterCommand.Add(5), authorizationContext);
 // result is Ok(CounterState { Count = 5 })
 
 Console.WriteLine(result.Value.Count); // 5
@@ -186,7 +218,7 @@ Console.WriteLine(result.Value.Count); // 5
 ### Rejected Commands
 
 ```csharp
-var overflow = await runtime.Handle(new CounterCommand.Add(200));
+var overflow = await runtime.Handle(new CounterCommand.Add(200), authorizationContext);
 // overflow is Err(CounterError.Overflow { Current = 5, Amount = 200, Max = 100 })
 
 // State is unchanged
@@ -197,7 +229,7 @@ Console.WriteLine(runtime.Events.Count); // still 5 (no new events dispatched)
 ### Pattern Matching on Results
 
 ```csharp
-var result = await runtime.Handle(new CounterCommand.Add(10));
+var result = await runtime.Handle(new CounterCommand.Add(10), authorizationContext);
 
 var message = result.IsOk
     ? $"Success! Count is now {result.Value.Count}"
@@ -311,8 +343,9 @@ public void Decide_Overflow_ReturnsError()
 {
     var state = new CounterState(95);
     var command = new CounterCommand.Add(10);
+    var validated = Counter.Validate(state, command);
 
-    var result = Counter.Decide(state, command);
+    var result = Counter.Decide(state, validated);
 
     Assert.True(result.IsErr);
     var overflow = Assert.IsType<CounterError.Overflow>(result.Error);
@@ -326,9 +359,10 @@ public void Decide_IsPure_SameInputSameOutput()
 {
     var state = new CounterState(5);
     var command = new CounterCommand.Add(3);
+    var validated = Counter.Validate(state, command);
 
-    var r1 = Counter.Decide(state, command);
-    var r2 = Counter.Decide(state, command);
+    var r1 = Counter.Decide(state, validated);
+    var r2 = Counter.Decide(state, validated);
 
     // Pure function: identical inputs always produce identical outputs
     Assert.True(r1.IsOk);
@@ -337,9 +371,9 @@ public void Decide_IsPure_SameInputSameOutput()
 }
 ```
 
-## The Seven Elements
+## The Nine Elements
 
-The Decider pattern has seven elements. The Automaton kernel provides four, the Decider adds three:
+The decider-shaped automaton in this library exposes nine explicit elements:
 
 | # | Element | Provider | Implementation |
 |---|---------|----------|----------------|
@@ -347,9 +381,11 @@ The Decider pattern has seven elements. The Automaton kernel provides four, the 
 | 2 | Event type | Type parameter | `TEvent` |
 | 3 | State type | Type parameter | `TState` |
 | 4 | Initial state | Automaton | `Initialize(parameters)` |
-| 5 | Decide | **Decider** | `Decide(state, command)` |
-| 6 | Evolve | Automaton | `Transition(state, event)` |
-| 7 | Is terminal | **Decider** | `IsTerminal(state)` |
+| 5 | Validate | **Decider** | `Validate(state, command)` |
+| 6 | Authorize | **Decider** | `Authorize(state, validated, authorizationContext)` |
+| 7 | Decide | **Decider** | `Decide(state, validated)` |
+| 8 | Evolve | Automaton | `Transition(state, event)` |
+| 9 | Is terminal | **Decider** | `IsTerminal(state)` |
 
 `IsTerminal` defaults to `false`. Override it when your domain has a natural end-of-life:
 
@@ -366,7 +402,7 @@ public static bool IsTerminal(OrderState state) =>
 
 | Topic | Link |
 | ----- | ---- |
-| The seven elements explained | [The Decider](../concepts/the-decider.md) |
+| The decider elements explained | [The Decider](../concepts/the-decider.md) |
 | Map, Bind, MapError pipelines | [Error Handling Patterns](../guides/error-handling-patterns.md) |
 | Migrating from Automaton to Decider | [Upgrading to Decider](../guides/upgrading-to-decider.md) |
 | Result API signatures | [Result Reference](../reference/result.md) |

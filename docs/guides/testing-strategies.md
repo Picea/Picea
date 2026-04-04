@@ -21,7 +21,7 @@ Most of your tests should be at the bottom — pure function tests with no runti
 
 ## Level 1: Pure Function Tests
 
-`Transition` and `Decide` are pure functions. Test them directly:
+`Transition`, `Validate`, and `Decide` are pure functions. Test them directly:
 
 ### Testing Transition
 
@@ -45,8 +45,10 @@ public void Transition_Increment_IncreasesCount()
 public void Decide_Overflow_ReturnsError()
 {
     var state = new CounterState(95);
+    var command = new CounterCommand.Add(10);
 
-    var result = Counter.Decide(state, new CounterCommand.Add(10));
+    var validated = Counter.Validate(state, command);
+    var result = Counter.Decide(state, validated);
 
     Assert.True(result.IsErr);
     var error = Assert.IsType<CounterError.Overflow>(result.Error);
@@ -63,9 +65,10 @@ public void Decide_IsDeterministic()
 {
     var state = new CounterState(5);
     var command = new CounterCommand.Add(3);
+    var validated = Counter.Validate(state, command);
 
-    var r1 = Counter.Decide(state, command);
-    var r2 = Counter.Decide(state, command);
+    var r1 = Counter.Decide(state, validated);
+    var r2 = Counter.Decide(state, validated);
 
     Assert.Equal(r1.Value.Length, r2.Value.Length);
 }

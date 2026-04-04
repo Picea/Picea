@@ -215,16 +215,16 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         {
             var waitTask = _gate.WaitAsync(cancellationToken);
             if (waitTask.IsCompletedSuccessfully)
-                return DispatchAfterGate(@event, cancellationToken, activity);
+                return DispatchAfterGate(@event, activity, cancellationToken);
 
-            return AwaitGateThenDispatch(waitTask, @event, cancellationToken, activity);
+            return AwaitGateThenDispatch(waitTask, @event, activity, cancellationToken);
         }
 
-        return DispatchUnserialized(@event, cancellationToken, activity);
+        return DispatchUnserialized(@event, activity, cancellationToken);
     }
 
     private ValueTask<Result<Unit, PipelineError>> DispatchUnserialized(
-        TEvent @event, CancellationToken cancellationToken, Activity? activity)
+        TEvent @event, Activity? activity, CancellationToken cancellationToken)
     {
         try
         {
@@ -272,7 +272,7 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     }
 
     private ValueTask<Result<Unit, PipelineError>> DispatchAfterGate(
-        TEvent @event, CancellationToken cancellationToken, Activity? activity)
+        TEvent @event, Activity? activity, CancellationToken cancellationToken)
     {
         try
         {
@@ -327,7 +327,7 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
 
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     private async ValueTask<Result<Unit, PipelineError>> AwaitGateThenDispatch(
-        Task waitTask, TEvent @event, CancellationToken cancellationToken, Activity? activity)
+        Task waitTask, TEvent @event, Activity? activity, CancellationToken cancellationToken)
     {
         using var _ = activity;
         await waitTask.ConfigureAwait(false);
@@ -361,19 +361,19 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         {
             var waitTask = _gate.WaitAsync(cancellationToken);
             if (waitTask.IsCompletedSuccessfully)
-                return InterpretEffectAfterGate(effect, cancellationToken, activity);
+                return InterpretEffectAfterGate(effect, activity, cancellationToken);
 
-            return AwaitGateThenInterpret(waitTask, effect, cancellationToken, activity);
+            return AwaitGateThenInterpret(waitTask, effect, activity, cancellationToken);
         }
 
-        return InterpretEffectUnserialized(effect, cancellationToken, activity);
+        return InterpretEffectUnserialized(effect, activity, cancellationToken);
     }
 
-    private ValueTask InterpretEffectUnserialized(TEffect effect, CancellationToken cancellationToken, Activity? activity)
+    private ValueTask InterpretEffectUnserialized(TEffect effect, Activity? activity, CancellationToken cancellationToken)
     {
         try
         {
-            var coreTask = InterpretEffectCore(effect, cancellationToken);
+            var coreTask = InterpretEffectCore(effect, cancellationToken: cancellationToken);
             if (coreTask.IsCompletedSuccessfully)
             {
                 activity?.SetStatus(ActivityStatusCode.Ok);
@@ -407,11 +407,11 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         }
     }
 
-    private ValueTask InterpretEffectAfterGate(TEffect effect, CancellationToken cancellationToken, Activity? activity)
+    private ValueTask InterpretEffectAfterGate(TEffect effect, Activity? activity, CancellationToken cancellationToken)
     {
         try
         {
-            var coreTask = InterpretEffectCore(effect, cancellationToken);
+            var coreTask = InterpretEffectCore(effect, cancellationToken: cancellationToken);
             if (coreTask.IsCompletedSuccessfully)
             {
                 activity?.SetStatus(ActivityStatusCode.Ok);
@@ -453,13 +453,13 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
 
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder))]
     private async ValueTask AwaitGateThenInterpret(
-        Task waitTask, TEffect effect, CancellationToken cancellationToken, Activity? activity)
+        Task waitTask, TEffect effect, Activity? activity, CancellationToken cancellationToken)
     {
         using var _ = activity;
         await waitTask.ConfigureAwait(false);
         try
         {
-            await InterpretEffectCore(effect, cancellationToken).ConfigureAwait(false);
+            await InterpretEffectCore(effect, cancellationToken: cancellationToken).ConfigureAwait(false);
             activity?.SetStatus(ActivityStatusCode.Ok);
         }
         catch (Exception ex)
@@ -612,7 +612,7 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         return Result<Unit, PipelineError>.Ok(Unit.Value);
     }
 
-    private ValueTask InterpretEffectCore(TEffect effect, CancellationToken cancellationToken, int depth = 0)
+    private ValueTask InterpretEffectCore(TEffect effect, int depth = 0, CancellationToken cancellationToken = default)
     {
         var resultTask = InterpretEffectCoreWithResult(effect, cancellationToken, depth);
         if (resultTask.IsCompletedSuccessfully)

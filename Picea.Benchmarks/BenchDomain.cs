@@ -77,20 +77,28 @@ public class BenchDecider
         BenchState state, BenchEvent @event) =>
         BenchAutomaton.Transition(state, @event);
 
-    public static Result<BenchEvent[], BenchError> Decide(
+    public static Validated<BenchCommand, BenchError> Validate(
         BenchState state, BenchCommand command) =>
         command switch
         {
-            BenchCommand.Add(var n) =>
-                Result<BenchEvent[], BenchError>
-                    .Ok([new BenchEvent.Increment(n)]),
-
             BenchCommand.Reject =>
-                Result<BenchEvent[], BenchError>
-                    .Err(new BenchError.Rejected()),
+                new Validated<BenchCommand, BenchError>.Invalid(new BenchError.Rejected()),
 
-            _ => throw new UnreachableException()
+            _ => new Validated<BenchCommand, BenchError>.Valid(command)
         };
+
+    public static Result<BenchEvent[], BenchError> Decide(
+        BenchState state, Validated<BenchCommand, BenchError> validated) =>
+        validated is not Validated<BenchCommand, BenchError>.Valid(var command)
+            ? throw new UnreachableException()
+            : command switch
+            {
+                BenchCommand.Add(var n) =>
+                    Result<BenchEvent[], BenchError>
+                        .Ok([new BenchEvent.Increment(n)]),
+
+                _ => throw new UnreachableException()
+            };
 }
 
 // ── Observers & Interpreters ──────────────────────────────────
