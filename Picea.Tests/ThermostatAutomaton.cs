@@ -299,10 +299,10 @@ public class Thermostat
     public static bool IsTerminal(ThermostatState state) => !state.Active;
 }
 
-public sealed class ThermostatGuardPolicy
-    : GuardedPolicy<ThermostatPrincipal, ThermostatState, ThermostatCommand, ThermostatError>
+public sealed class ThermostatAuthorizationPolicy
+    : GuardedAuthorization<ThermostatPrincipal, ThermostatState, ThermostatCommand, ThermostatError>
 {
-    public static Policy<ThermostatPrincipal, ThermostatState, ThermostatCommand, ThermostatError> Authorize =>
+    private static readonly Policy<ThermostatPrincipal, ThermostatState, ThermostatCommand, ThermostatError> _authorize =
         static (principal, _, command) =>
             (principal.Role, command) switch
             {
@@ -317,7 +317,14 @@ public sealed class ThermostatGuardPolicy
                 _ => Result<ValidCommand<ThermostatCommand>, ThermostatError>.Ok(new ValidCommand<ThermostatCommand>(command))
             };
 
-    public static Validator<ThermostatState, ThermostatCommand, ThermostatError> Validate =>
+    public static Policy<ThermostatPrincipal, ThermostatState, ThermostatCommand, ThermostatError> Authorize => _authorize;
+
+}
+
+public sealed class ThermostatValidationPolicy
+    : GuardedValidation<ThermostatState, ThermostatCommand, ThermostatError>
+{
+    private static readonly Validator<ThermostatState, ThermostatCommand, ThermostatError> _validate =
         static (state, command) =>
             command switch
             {
@@ -340,6 +347,8 @@ public sealed class ThermostatGuardPolicy
 
                 _ => throw new UnreachableException()
             };
+
+    public static Validator<ThermostatState, ThermostatCommand, ThermostatError> Validate => _validate;
 }
 
 // ── Observers ─────────────────────────────────────────────────

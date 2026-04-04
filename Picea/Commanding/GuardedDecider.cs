@@ -67,12 +67,16 @@ public delegate ValueTask DenialObserver<in TPrincipal, in TState, in TCommand, 
     TCommand command,
     TError error);
 
-public interface GuardedPolicy<TPrincipal, TState, TCommand, TError>
+public interface GuardedAuthorization<TPrincipal, TState, TCommand, TError>
 {
     /// <summary>
     /// Principal-based authorization stage.
     /// </summary>
     static abstract Policy<TPrincipal, TState, TCommand, TError> Authorize { get; }
+}
+
+public interface GuardedValidation<TState, TCommand, TError>
+{
 
     /// <summary>
     /// Command validation stage.
@@ -105,11 +109,14 @@ public interface GuardedDecider<TState, TCommand, TEvent, TEffect, TParameters>
 /// <summary>
 /// Runtime for a secure staged decider: authorize, validate, decide, then dispatch.
 /// </summary>
-public sealed class GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TPrincipal, TState, TCommand, TEvent, TEffect, TError, TParameters> : IDisposable
+public sealed class GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TValidation, TPrincipal, TState, TCommand, TEvent, TEffect, TError, TParameters> : IDisposable
     where TGuardedDecider : GuardedDecider<TState, TCommand, TEvent, TEffect, TParameters>
-    where TGuardedPolicy : GuardedPolicy<TPrincipal, TState, TCommand, TError>
+    where TGuardedPolicy : GuardedAuthorization<TPrincipal, TState, TCommand, TError>
+    where TValidation : GuardedValidation<TState, TCommand, TError>
 {
     private static readonly string _deciderTypeName = typeof(TGuardedDecider).Name;
+    private static readonly Policy<TPrincipal, TState, TCommand, TError> _authorize = TGuardedPolicy.Authorize;
+    private static readonly Validator<TState, TCommand, TError> _validate = TValidation.Validate;
     private static readonly DenialObserver<TPrincipal, TState, TCommand, TError> _noOpDenialObserver =
         static (_, _, _, _, _) => ValueTask.CompletedTask;
 
@@ -151,7 +158,7 @@ public sealed class GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TPri
     /// <param name="cancellationToken">Token used to cancel runtime startup.</param>
     /// <returns>A started guarded deciding runtime.</returns>
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
-    public static async ValueTask<GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TPrincipal, TState, TCommand, TEvent, TEffect, TError, TParameters>> Start(
+    public static async ValueTask<GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TValidation, TPrincipal, TState, TCommand, TEvent, TEffect, TError, TParameters>> Start(
         TParameters parameters,
         Observer<TState, TEvent, TEffect> observer,
         Interpreter<TEffect, TEvent> interpreter,
@@ -167,7 +174,7 @@ public sealed class GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TPri
             .Start(parameters, observer, interpreter, threadSafe, trackEvents, cancellationToken).ConfigureAwait(false);
 
         activity?.SetStatus(ActivityStatusCode.Ok);
-        return new GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TPrincipal, TState, TCommand, TEvent, TEffect, TError, TParameters>(
+        return new GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TValidation, TPrincipal, TState, TCommand, TEvent, TEffect, TError, TParameters>(
             core,
             denialObserver ?? _noOpDenialObserver);
     }
@@ -214,7 +221,7 @@ public sealed class GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TPri
     {
         var state = _core.State;
 
-        var authorized = TGuardedPolicy.Authorize(principal, state, command);
+        var authorized = _authorize(principal, state, command);
         if (authorized.IsErr)
         {
             authorized.TryGetError(out var authorizationError);
@@ -226,7 +233,7 @@ public sealed class GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TPri
         }
 
         authorized.TryGetValue(out var authorizedCommand);
-        var validated = TGuardedPolicy.Validate(state, authorizedCommand.Command);
+        var validated = _validate(state, authorizedCommand.Command);
         if (validated.IsErr)
         {
             validated.TryGetError(out var validationError);

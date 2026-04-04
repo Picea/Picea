@@ -537,11 +537,11 @@ public class DeciderTests
             ThermostatEvent, ThermostatEffect, ThermostatError, Unit>.Start(default, ThermostatObservers.NoOp, ThermostatInterpreters.NoOp);
     }
 
-    private static async Task<GuardedDecidingRuntime<Thermostat, ThermostatGuardPolicy, ThermostatPrincipal, ThermostatState, ThermostatCommand,
+    private static async Task<GuardedDecidingRuntime<Thermostat, ThermostatAuthorizationPolicy, ThermostatValidationPolicy, ThermostatPrincipal, ThermostatState, ThermostatCommand,
             ThermostatEvent, ThermostatEffect, ThermostatError, Unit>> CreateGuardedRuntime(
         DenialObserver<ThermostatPrincipal, ThermostatState, ThermostatCommand, ThermostatError>? denialObserver = null)
     {
-        return await GuardedDecidingRuntime<Thermostat, ThermostatGuardPolicy, ThermostatPrincipal, ThermostatState, ThermostatCommand,
+        return await GuardedDecidingRuntime<Thermostat, ThermostatAuthorizationPolicy, ThermostatValidationPolicy, ThermostatPrincipal, ThermostatState, ThermostatCommand,
             ThermostatEvent, ThermostatEffect, ThermostatError, Unit>.Start(
                 default,
                 ThermostatObservers.NoOp,
