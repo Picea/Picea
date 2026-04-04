@@ -146,15 +146,24 @@ var http = result.MapError(error => error switch
 Use `DenialObserver` when you need audit trails without changing domain error types:
 
 ```csharp
-var runtime = await GuardedDecidingRuntime<CounterSecure, CounterState, CounterPrincipal,
-    CounterCommand, CounterEvent, CounterEffect, CounterError, Unit>.Start(
+var runtime = await GuardedDecidingRuntime<
+    CounterSecure,
+    CounterAuthorizationPolicy,
+    CounterValidationPolicy,
+    CounterPrincipal,
+    CounterState,
+    CounterCommand,
+    CounterEvent,
+    CounterEffect,
+    CounterError,
+    Unit>.Start(
         default,
         observer,
         interpreter,
-        denialObserver: (kind, error) =>
+        denialObserver: (kind, _, _, _, error) =>
         {
             audit.Write($"Guarded denial at {kind}: {error}");
-            return Unit.Value;
+            return ValueTask.CompletedTask;
         });
 ```
 

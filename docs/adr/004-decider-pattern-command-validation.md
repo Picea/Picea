@@ -43,10 +43,10 @@ Key design choices:
 
     - `Validator<TState, TCommand, TError>`
     - `Policy<TPrincipal, TState, TCommand, TError>`
-    - `GuardedDecider<TState, TPrincipal, TCommand, TEvent, TEffect, TError, TParameters>`
+    - `GuardedDecider<TState, TCommand, TEvent, TEffect, TParameters>`
     - `GuardedDecidingRuntime<...>`
 
-    The secure runtime executes `Validate -> Authorize -> Decide` atomically and short-circuits at the first rejection. This keeps Decide-only deciders fully valid while enabling explicit hardening where needed.
+    The secure runtime executes `Authorize -> Validate -> Decide` atomically and short-circuits at the first rejection. This keeps Decide-only deciders fully valid while enabling explicit hardening where needed.
 
 ## Consequences
 

@@ -74,15 +74,15 @@ For stricter command hardening, an additive secure staged model introduces:
 
 - `Validator` — state-based feasibility and invariant checks
 - `Policy` — authorization checks (optionally using caller context)
-- `GuardedDecider` — explicit staged contract (`Validate` -> `Authorize` -> `Decide`)
+- `GuardedDecider` — explicit staged contract (`Authorize` -> `Validate` -> `Decide`)
 - `GuardedDecidingRuntime` — executes the staged flow atomically
 
 Conceptual flow:
 
 ```text
-Command -> Validate -> Authorize -> Decide -> Events -> Transition -> State
-                     \-> Error
-                                 \-> Error
+Command -> Authorize -> Validate -> Decide -> Events -> Transition -> State
+                      \-> Error
+                                  \-> Error
 ```
 
 The first rejecting stage returns `Err(error)` and stops processing. If all stages pass, events are dispatched exactly like `Decider`.

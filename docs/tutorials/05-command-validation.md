@@ -206,15 +206,24 @@ Use the additive secure APIs when you want explicit stage boundaries:
 `GuardedDecidingRuntime` runs these stages atomically in one `Handle` call.
 
 ```csharp
-var guardedRuntime = await GuardedDecidingRuntime<CounterSecure, CounterState, CounterPrincipal,
-    CounterCommand, CounterEvent, CounterEffect, CounterError, Unit>.Start(
+var guardedRuntime = await GuardedDecidingRuntime<
+    CounterSecure,
+    CounterAuthorizationPolicy,
+    CounterValidationPolicy,
+    CounterPrincipal,
+    CounterState,
+    CounterCommand,
+    CounterEvent,
+    CounterEffect,
+    CounterError,
+    Unit>.Start(
         default,
         observer,
         interpreter,
-        denialObserver: (kind, error) =>
+        denialObserver: (kind, _, _, _, error) =>
         {
             Console.WriteLine($"Denied at {kind}: {error}");
-            return Unit.Value;
+            return ValueTask.CompletedTask;
         });
 
 var result = await guardedRuntime.Handle(
@@ -224,8 +233,8 @@ var result = await guardedRuntime.Handle(
 
 Stage behavior:
 
-- `Validate` rejects -> `Err(error)`, no events dispatched
 - `Authorize` rejects -> `Err(error)`, no events dispatched
+- `Validate` rejects -> `Err(error)`, no events dispatched
 - `Decide` rejects -> `Err(error)`, no events dispatched
 - All stages accept -> events dispatch through `Transition`, returning `Ok(state)`
 

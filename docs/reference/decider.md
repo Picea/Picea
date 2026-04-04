@@ -89,7 +89,7 @@ Validates and handles a command: Decide → Dispatch events → return new state
 `GuardedDecidingRuntime` is the secure staged companion to `DecidingRuntime`.
 
 - Same runtime guarantees (`State`, `Events`, terminal checks, atomic `Handle`)
-- Adds staged command handling via `Validator` and `Policy` before `Decide`
+- Adds staged command handling via `Policy` then `Validator` before `Decide`
 - Preserves the same success/error channel and state-transition behavior
 
 ---
