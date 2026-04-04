@@ -238,7 +238,7 @@ public class DeciderTests
         var failure = await Assert.That(() => runtime.Handle(new ThermostatCommand.RecordReading(18m)).AsTask())
             .ThrowsExactly<InvalidOperationException>();
 
-        await Assert.That(failure!.Message).Contains("Pipeline error during dispatch");
+        await Assert.That(failure.Message).Contains("Pipeline error during dispatch");
 
         Volatile.Write(ref blockObserver, 1);
         var blockedHandle = runtime.Handle(new ThermostatCommand.RecordReading(18m)).AsTask();
@@ -284,7 +284,7 @@ public class DeciderTests
     public async Task Decide_IsPure_SameInputProducesSameOutput()
     {
         var state = new ThermostatState(20m, 22m, false, true);
-        var command = new Validated<ThermostatCommand, ThermostatError>.Valid(new ThermostatCommand.RecordReading(18m));
+        var command = (ThermostatCommand)new ThermostatCommand.RecordReading(18m);
 
         var result1 = Thermostat.Decide(state, command);
         var result2 = Thermostat.Decide(state, command);
@@ -299,7 +299,7 @@ public class DeciderTests
     {
         var state = new ThermostatState(20m, 22m, false, true);
 
-        var result = Thermostat.Decide(state, new Validated<ThermostatCommand, ThermostatError>.Valid(new ThermostatCommand.RecordReading(18m)));
+        var result = Thermostat.Decide(state, new ThermostatCommand.RecordReading(18m));
 
         await Assert.That(result.IsOk).IsTrue();
         var events = result.Value.ToList();
@@ -313,7 +313,7 @@ public class DeciderTests
     {
         var state = new ThermostatState(20m, 22m, false, true);
 
-        var result = Thermostat.Decide(state, new Validated<ThermostatCommand, ThermostatError>.Valid(new ThermostatCommand.RecordReading(36m)));
+        var result = Thermostat.Decide(state, new ThermostatCommand.RecordReading(36m));
 
         await Assert.That(result.IsOk).IsTrue();
         var events = result.Value.ToList();
@@ -436,11 +436,8 @@ public class DeciderTests
 
     private sealed class NullEventDecider : Decider<ThermostatState, ThermostatCommand, ThermostatEvent, ThermostatEffect, ThermostatError, Unit>
     {
-        public static Validated<ThermostatCommand, ThermostatError> Validate(ThermostatState state, ThermostatCommand command) =>
-            new Validated<ThermostatCommand, ThermostatError>.Valid(command);
-
-        public static Result<ThermostatEvent[], ThermostatError> Decide(ThermostatState state, Validated<ThermostatCommand, ThermostatError> validated) =>
-            Result<ThermostatEvent[], ThermostatError>.Ok(null!);
+        public static Result<ThermostatEvent[], ThermostatError> Decide(ThermostatState state, ThermostatCommand command) =>
+            Result<ThermostatEvent[], ThermostatError>.Ok((ThermostatEvent[])null!);
 
         public static (ThermostatState State, ThermostatEffect Effect) Initialize(Unit parameters) =>
             Thermostat.Initialize(parameters);
@@ -562,7 +559,7 @@ public class DeciderTests
         var ex = await Assert.That(() => runtime.Handle(new ThermostatCommand.RecordReading(18m)).AsTask())
             .ThrowsExactly<ArgumentNullException>();
 
-        await Assert.That(ex!.ParamName).Contains("value");
+        await Assert.That(ex.ParamName).Contains("value");
     }
 
     // =========================================================================
@@ -590,7 +587,7 @@ public class DeciderTests
         var result = Result<int, string>.Err("fail");
 
         var ex = await Assert.That(() => result.Value).ThrowsExactly<InvalidOperationException>();
-        await Assert.That(ex!.Message).Contains("Err");
+        await Assert.That(ex.Message).Contains("Err");
     }
 
     [Test]
@@ -599,7 +596,7 @@ public class DeciderTests
         var result = Result<int, string>.Ok(42);
 
         var ex = await Assert.That(() => result.Error).ThrowsExactly<InvalidOperationException>();
-        await Assert.That(ex!.Message).Contains("Ok");
+        await Assert.That(ex.Message).Contains("Ok");
     }
 
     [Test]

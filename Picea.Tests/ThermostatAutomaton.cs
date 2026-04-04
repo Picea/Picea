@@ -125,90 +125,77 @@ public class Thermostat
             Active: true),
          new ThermostatEffect.None());
 
-    // Stage 1 — Guards against inactive system, already-shutdown state, and out-of-range targets.
-    public static Validated<ThermostatCommand, ThermostatError> Validate(
+    public static Result<ThermostatEvent[], ThermostatError> Decide(
         ThermostatState state, ThermostatCommand command) =>
         command switch
         {
-            // Shutdown while already shut down is a terminal-state violation
+            // ── Shutdown (must come before the inactive guard) ───
             ThermostatCommand.Shutdown when !state.Active =>
-                new Validated<ThermostatCommand, ThermostatError>.Invalid(
-                    new ThermostatError.AlreadyShutdown()),
+                Result<ThermostatEvent[], ThermostatError>
+                    .Err(new ThermostatError.AlreadyShutdown()),
 
-            // All other commands are rejected when the system is inactive
+            // ── Inactive guard (all other commands) ──────────────
             _ when !state.Active =>
-                new Validated<ThermostatCommand, ThermostatError>.Invalid(
-                    new ThermostatError.SystemInactive()),
+                Result<ThermostatEvent[], ThermostatError>
+                    .Err(new ThermostatError.SystemInactive()),
 
-            // Target temperature must be within the permitted range
-            ThermostatCommand.SetTarget(var target) when target is < MinTarget or > MaxTarget =>
-                new Validated<ThermostatCommand, ThermostatError>.Invalid(
-                    new ThermostatError.InvalidTarget(target, MinTarget, MaxTarget)),
-
-            _ => new Validated<ThermostatCommand, ThermostatError>.Valid(command)
-        };
-
-    // Stage 3 — Produces domain events from a validated thermostat command.
-    // Pre: command is feasible (passed Validate) and permitted (passed Authorize).
-    public static Result<ThermostatEvent[], ThermostatError> Decide(
-        ThermostatState state, Validated<ThermostatCommand, ThermostatError> validated) =>
-        validated is not Validated<ThermostatCommand, ThermostatError>.Valid(var command)
-            ? throw new UnreachableException()
-            : command switch
-            {
-                // ── RecordReading ────────────────────────────────────
-                ThermostatCommand.RecordReading(var temp) when temp > AlertThreshold =>
-                    Result<ThermostatEvent[], ThermostatError>
-                        .Ok(state.Heating
-                            ? [new ThermostatEvent.TemperatureRecorded(temp),
+            // ── RecordReading ────────────────────────────────────
+            ThermostatCommand.RecordReading(var temp) when temp > AlertThreshold =>
+                Result<ThermostatEvent[], ThermostatError>
+                    .Ok(state.Heating
+                        ? [new ThermostatEvent.TemperatureRecorded(temp),
                            new ThermostatEvent.HeaterTurnedOff(),
                            new ThermostatEvent.AlertRaised(
                                $"Temperature {temp}°C exceeds alert threshold {AlertThreshold}°C")]
-                            : [new ThermostatEvent.TemperatureRecorded(temp),
+                        : [new ThermostatEvent.TemperatureRecorded(temp),
                            new ThermostatEvent.AlertRaised(
                                $"Temperature {temp}°C exceeds alert threshold {AlertThreshold}°C")]),
 
-                ThermostatCommand.RecordReading(var temp) when temp < state.TargetTemp && !state.Heating =>
-                    Result<ThermostatEvent[], ThermostatError>
-                        .Ok([new ThermostatEvent.TemperatureRecorded(temp),
+            ThermostatCommand.RecordReading(var temp) when temp < state.TargetTemp && !state.Heating =>
+                Result<ThermostatEvent[], ThermostatError>
+                    .Ok([new ThermostatEvent.TemperatureRecorded(temp),
                          new ThermostatEvent.HeaterTurnedOn()]),
 
-                ThermostatCommand.RecordReading(var temp) when temp >= state.TargetTemp && state.Heating =>
-                    Result<ThermostatEvent[], ThermostatError>
-                        .Ok([new ThermostatEvent.TemperatureRecorded(temp),
+            ThermostatCommand.RecordReading(var temp) when temp >= state.TargetTemp && state.Heating =>
+                Result<ThermostatEvent[], ThermostatError>
+                    .Ok([new ThermostatEvent.TemperatureRecorded(temp),
                          new ThermostatEvent.HeaterTurnedOff()]),
 
-                ThermostatCommand.RecordReading(var temp) =>
-                    Result<ThermostatEvent[], ThermostatError>
-                        .Ok([new ThermostatEvent.TemperatureRecorded(temp)]),
+            ThermostatCommand.RecordReading(var temp) =>
+                Result<ThermostatEvent[], ThermostatError>
+                    .Ok([new ThermostatEvent.TemperatureRecorded(temp)]),
 
-                // ── SetTarget ────────────────────────────────────────
-                ThermostatCommand.SetTarget(var target) when state.CurrentTemp < target && !state.Heating =>
-                    Result<ThermostatEvent[], ThermostatError>
-                        .Ok([new ThermostatEvent.TargetSet(target),
+            // ── SetTarget ────────────────────────────────────────
+            ThermostatCommand.SetTarget(var target) when target is < MinTarget or > MaxTarget =>
+                Result<ThermostatEvent[], ThermostatError>
+                    .Err(new ThermostatError.InvalidTarget(target, MinTarget, MaxTarget)),
+
+            ThermostatCommand.SetTarget(var target) when state.CurrentTemp < target && !state.Heating =>
+                Result<ThermostatEvent[], ThermostatError>
+                    .Ok([new ThermostatEvent.TargetSet(target),
                          new ThermostatEvent.HeaterTurnedOn()]),
 
-                ThermostatCommand.SetTarget(var target) when state.CurrentTemp >= target && state.Heating =>
-                    Result<ThermostatEvent[], ThermostatError>
-                        .Ok([new ThermostatEvent.TargetSet(target),
+            ThermostatCommand.SetTarget(var target) when state.CurrentTemp >= target && state.Heating =>
+                Result<ThermostatEvent[], ThermostatError>
+                    .Ok([new ThermostatEvent.TargetSet(target),
                          new ThermostatEvent.HeaterTurnedOff()]),
 
-                ThermostatCommand.SetTarget(var target) =>
-                    Result<ThermostatEvent[], ThermostatError>
-                        .Ok([new ThermostatEvent.TargetSet(target)]),
+            ThermostatCommand.SetTarget(var target) =>
+                Result<ThermostatEvent[], ThermostatError>
+                    .Ok([new ThermostatEvent.TargetSet(target)]),
 
-                // ── Shutdown ─────────────────────────────────────────
-                ThermostatCommand.Shutdown when state.Heating =>
-                    Result<ThermostatEvent[], ThermostatError>
-                        .Ok([new ThermostatEvent.HeaterTurnedOff(),
+            // ── Shutdown (active) ────────────────────────────────
+            ThermostatCommand.Shutdown when state.Heating =>
+                Result<ThermostatEvent[], ThermostatError>
+                    .Ok([new ThermostatEvent.HeaterTurnedOff(),
                          new ThermostatEvent.ShutdownCompleted()]),
 
-                ThermostatCommand.Shutdown =>
-                    Result<ThermostatEvent[], ThermostatError>
-                        .Ok([new ThermostatEvent.ShutdownCompleted()]),
+            ThermostatCommand.Shutdown =>
+                Result<ThermostatEvent[], ThermostatError>
+                    .Ok([new ThermostatEvent.ShutdownCompleted()]),
 
-                _ => throw new UnreachableException()
-            };
+            _ => throw new UnreachableException()
+        };
 
     public static (ThermostatState State, ThermostatEffect Effect) Transition(
         ThermostatState state, ThermostatEvent @event) =>

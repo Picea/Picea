@@ -56,8 +56,7 @@ public class TracingTests
 
         var dispatch = collector.Activities.FirstOrDefault(a =>
             a.TraceId == root.TraceId
-            && a.DisplayName == "Automaton.Dispatch"
-            && Equals(a.GetTagItem("automaton.event.type"), "TemperatureRecorded"))
+            && a.DisplayName == "Automaton.Dispatch")
             ?? throw new InvalidOperationException("Expected dispatch activity for this test trace.");
         await Assert.That(dispatch.GetTagItem("automaton.type")).IsEqualTo("Thermostat");
         await Assert.That(dispatch.GetTagItem("automaton.event.type")).IsEqualTo("TemperatureRecorded");

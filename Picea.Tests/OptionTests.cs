@@ -61,7 +61,7 @@ public sealed class OptionTests
         var option = Option<int>.None;
 
         var ex = await Assert.That(() => option.Value).ThrowsExactly<InvalidOperationException>();
-        await Assert.That(ex!.Message).Contains("None");
+        await Assert.That(ex.Message).Contains("None");
     }
 
     [Test]
@@ -406,7 +406,7 @@ public sealed class OptionTests
     public async Task Some_null_reference_throws_ArgumentNullException()
     {
         var ex = await Assert.That(() => Option<string>.Some(null!)).ThrowsExactly<ArgumentNullException>();
-        await Assert.That(ex!.ParamName).Contains("value");
+        await Assert.That(ex.ParamName).Contains("value");
     }
 
     [Test]
@@ -414,11 +414,11 @@ public sealed class OptionTests
     {
         var ex = await Assert.That(() =>
         {
-            Option<string> option = null!;
+            Option<string> option = (string)null!;
             return option;
         }).ThrowsExactly<ArgumentNullException>();
 
-        await Assert.That(ex!.ParamName).Contains("value");
+        await Assert.That(ex.ParamName).Contains("value");
     }
 
     // ── ToString ─────────────────────────────────────────────────────
