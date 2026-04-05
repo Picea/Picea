@@ -552,7 +552,7 @@ public class DeciderTests
     private sealed class NullEventDecider : Decider<ThermostatState, ThermostatCommand, ThermostatEvent, ThermostatEffect, ThermostatError, Unit>
     {
         public static Result<ThermostatEvent[], ThermostatError> Decide(ThermostatState state, ThermostatCommand command) =>
-            Result<ThermostatEvent[], ThermostatError>.Ok((ThermostatEvent[])null!);
+            Result<ThermostatEvent[], ThermostatError>.Ok(null!);
 
         public static (ThermostatState State, ThermostatEffect Effect) Initialize(Unit parameters) =>
             Thermostat.Initialize(parameters);

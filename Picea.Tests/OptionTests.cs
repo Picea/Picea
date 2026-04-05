@@ -414,7 +414,7 @@ public sealed class OptionTests
     {
         var ex = await Assert.That(() =>
         {
-            Option<string> option = (string)null!;
+            Option<string> option = null!;
             return option;
         }).ThrowsExactly<ArgumentNullException>();
 
