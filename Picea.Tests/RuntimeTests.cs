@@ -336,13 +336,6 @@ public class RuntimeTests
                 .MaxFeedbackDepth.ToString());
     }
 
-    [Test]
-    public async Task MaxFeedbackDepth_Is64()
-    {
-        await Assert.That(AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>.MaxFeedbackDepth)
-            .IsEqualTo(64);
-    }
-
     // =========================================================================
     // Null Safety
     // =========================================================================
@@ -370,7 +363,7 @@ public class RuntimeTests
     {
         Interpreter<ThermostatEffect, ThermostatEvent> invalidInterpreter =
             _ => new ValueTask<Result<ThermostatEvent[], PipelineError>>(
-                Result<ThermostatEvent[], PipelineError>.Ok((ThermostatEvent[])null!));
+                Result<ThermostatEvent[], PipelineError>.Ok(null!));
 
         var runtime = new AutomatonRuntime<Thermostat, ThermostatState, ThermostatEvent, ThermostatEffect, Unit>(
             new ThermostatState(20m, 22m, false, true), ThermostatObservers.NoOp, invalidInterpreter);

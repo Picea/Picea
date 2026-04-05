@@ -221,7 +221,7 @@ public sealed class ResultTests
     {
         var ex = await Assert.That(() =>
         {
-            Result<string, int> result = (string)null!;
+            Result<string, int> result = null!;
             return result;
         }).ThrowsExactly<ArgumentNullException>();
 

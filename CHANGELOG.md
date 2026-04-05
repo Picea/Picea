@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 via [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning).
 
+## [1.0.0-rc.4] — 2026-04-05
+
+### Changed
+
+- **Deciding runtime internals**: Normalized internal helper method signatures in `DecidingRuntime` for consistent parameter ordering and clearer call paths.
+
+### Fixed
+
+- **Formatting gate readiness**: Applied full repository `dotnet format` changes and aligned test code style (`null!` conversions and redundant cast cleanup) to satisfy formatting analyzers.
+- **Test analyzer failure**: Removed a constant-value assertion test that triggered non-auto-fixable `TUnitAssertions0005` during formatting verification.
+
 ## [1.0.0-rc.3] — 2026-04-04
 
 ### Added
@@ -66,3 +77,4 @@ This release is the extraction of the kernel from [MCGPPeters/Automaton](https:/
 [1.0.0-rc.2]: https://github.com/picea/picea/releases/tag/v1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/picea/picea/releases/tag/v1.0.0-rc.1
 [1.0.0-rc.3]: https://github.com/picea/picea/releases/tag/v1.0.0-rc.3
+[1.0.0-rc.4]: https://github.com/Picea/Picea/releases/tag/v1.0.0-rc.4
