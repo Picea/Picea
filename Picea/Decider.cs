@@ -130,9 +130,9 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
         {
             var waitTask = _core.Gate.WaitAsync(cancellationToken);
             if (waitTask.IsCompletedSuccessfully)
-                return HandleAfterGate(command, cancellationToken, activity);
+                return HandleAfterGate(command, activity, cancellationToken);
 
-            return AwaitGateThenHandle(waitTask, command, cancellationToken, activity);
+            return AwaitGateThenHandle(waitTask, command, activity, cancellationToken);
         }
 
         return HandleUnserialized(command, cancellationToken, activity);
@@ -187,7 +187,7 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
             {
                 var dispatchTask = _core.DispatchUnlocked(events[i], cancellationToken);
                 if (!dispatchTask.IsCompletedSuccessfully)
-                    return AwaitRemainingEventsAndReturnOkUnserialized(dispatchTask, events, i + 1, cancellationToken, activity);
+                    return AwaitRemainingEventsAndReturnOkUnserialized(dispatchTask, events, i + 1, activity, cancellationToken);
 
                 var dispatchResult = dispatchTask.Result;
                 if (dispatchResult.IsErr)
@@ -217,7 +217,8 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     private async ValueTask<Result<TState, TError>> AwaitRemainingEventsAndReturnOkUnserialized(
         ValueTask<Result<Unit, PipelineError>> pendingTask, TEvent[] events, int startIndex,
-        CancellationToken cancellationToken, Activity? activity)
+        Activity? activity,
+        CancellationToken cancellationToken)
     {
         using var _ = activity;
         try
@@ -254,8 +255,8 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
         }
     }
 
-    private ValueTask<Result<TState, TError>> HandleAfterGate(
-        TCommand command, CancellationToken cancellationToken, Activity? activity)
+    private ValueTask<Result<TState, TError>> HandleAfterGate(TCommand command, Activity? activity,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -265,8 +266,7 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
                 decided.TryGetValue(out var decidedEvents);
                 return DispatchEventsAndReturnOk(
                     ContractGuards.RequireNonNullArray(decidedEvents),
-                    cancellationToken,
-                    activity);
+                    activity, cancellationToken);
             }
             else
             {
@@ -295,14 +295,14 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
         }
     }
 
-    private ValueTask<Result<TState, TError>> DispatchEventsAndReturnOk(
-        TEvent[] events, CancellationToken cancellationToken, Activity? activity)
+    private ValueTask<Result<TState, TError>> DispatchEventsAndReturnOk(TEvent[] events, Activity? activity,
+        CancellationToken cancellationToken)
     {
         for (var i = 0; i < events.Length; i++)
         {
             var dispatchTask = _core.DispatchUnlocked(events[i], cancellationToken);
             if (!dispatchTask.IsCompletedSuccessfully)
-                return AwaitRemainingEventsAndReturnOk(dispatchTask, events, i + 1, cancellationToken, activity);
+                return AwaitRemainingEventsAndReturnOk(dispatchTask, events, i + 1, activity, cancellationToken);
 
             var dispatchResult = dispatchTask.Result;
             if (dispatchResult.IsErr)
@@ -325,7 +325,8 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     private async ValueTask<Result<TState, TError>> AwaitRemainingEventsAndReturnOk(
         ValueTask<Result<Unit, PipelineError>> pendingTask, TEvent[] events, int startIndex,
-        CancellationToken cancellationToken, Activity? activity)
+        Activity? activity,
+        CancellationToken cancellationToken)
     {
         using var _ = activity;
         try
@@ -367,8 +368,8 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
     }
 
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
-    private async ValueTask<Result<TState, TError>> AwaitGateThenHandle(
-        Task waitTask, TCommand command, CancellationToken cancellationToken, Activity? activity)
+    private async ValueTask<Result<TState, TError>> AwaitGateThenHandle(Task waitTask, TCommand command,
+        Activity? activity, CancellationToken cancellationToken)
     {
         using var _ = activity;
         await waitTask.ConfigureAwait(false);
@@ -379,9 +380,9 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
             {
                 decided.TryGetValue(out var decidedEvents);
                 var events = ContractGuards.RequireNonNullArray(decidedEvents);
-                for (var i = 0; i < events.Length; i++)
+                foreach (var t in events)
                 {
-                    var result = await _core.DispatchUnlocked(events[i], cancellationToken).ConfigureAwait(false);
+                    var result = await _core.DispatchUnlocked(t, cancellationToken).ConfigureAwait(false);
                     if (result.IsErr)
                     {
                         result.TryGetError(out var dispatchError);
