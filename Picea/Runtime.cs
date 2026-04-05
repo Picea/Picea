@@ -44,6 +44,9 @@ namespace Picea;
 /// <summary>
 /// A structured error from an Observer or Interpreter pipeline stage.
 /// </summary>
+/// <param name="Message">The human-readable error message.</param>
+/// <param name="Source">An optional pipeline stage or component name that produced the error.</param>
+/// <param name="Exception">An optional underlying exception for diagnostics.</param>
 public readonly record struct PipelineError(
     string Message,
     string? Source = null,
@@ -57,6 +60,13 @@ public readonly record struct PipelineError(
 /// <summary>
 /// Observes each transition triple (state, event, effect) after the automaton steps.
 /// </summary>
+/// <typeparam name="TState">The state type observed after transition.</typeparam>
+/// <typeparam name="TEvent">The event type that triggered the transition.</typeparam>
+/// <typeparam name="TEffect">The effect type emitted by the transition.</typeparam>
+/// <param name="state">The resulting state after transition.</param>
+/// <param name="event">The event that was applied.</param>
+/// <param name="effect">The effect produced by the transition.</param>
+/// <returns>A pipeline result indicating success or a structured pipeline error.</returns>
 public delegate ValueTask<Result<Unit, PipelineError>> Observer<in TState, in TEvent, in TEffect>(
     TState state,
     TEvent @event,
@@ -65,6 +75,10 @@ public delegate ValueTask<Result<Unit, PipelineError>> Observer<in TState, in TE
 /// <summary>
 /// Interprets an effect by converting it into zero or more feedback events.
 /// </summary>
+/// <typeparam name="TEffect">The effect type consumed by the interpreter.</typeparam>
+/// <typeparam name="TEvent">The feedback event type produced by the interpreter.</typeparam>
+/// <param name="effect">The effect to interpret.</param>
+/// <returns>A pipeline result containing zero or more feedback events.</returns>
 public delegate ValueTask<Result<TEvent[], PipelineError>> Interpreter<in TEffect, TEvent>(TEffect effect);
 
 /// <summary>
@@ -123,6 +137,9 @@ internal static class ContractGuards
 public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParameters> : IDisposable
     where TAutomaton : Automaton<TState, TEvent, TEffect, TParameters>
 {
+    /// <summary>
+    /// Maximum recursive feedback depth allowed for interpreter-driven event loops.
+    /// </summary>
     public const int MaxFeedbackDepth = 64;
 
     private static readonly string _automatonTypeName = typeof(TAutomaton).Name;
@@ -399,6 +416,12 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         }
     }
 
+    /// <summary>
+    /// Interprets an effect and dispatches any produced feedback events.
+    /// </summary>
+    /// <param name="effect">The effect to interpret.</param>
+    /// <param name="cancellationToken">Cancellation token for interpretation and feedback dispatch.</param>
+    /// <returns>A task that completes when effect processing finishes.</returns>
     public ValueTask InterpretEffect(TEffect effect, CancellationToken cancellationToken = default)
     {
         var activity = AutomatonDiagnostics.Source.StartActivity("Automaton.InterpretEffect");
@@ -521,6 +544,10 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         }
     }
 
+    /// <summary>
+    /// Resets the current runtime state to the provided value.
+    /// </summary>
+    /// <param name="state">The state value to set as current.</param>
     public void Reset(TState state)
     {
         if (_threadSafe)
@@ -540,6 +567,9 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         }
     }
 
+    /// <summary>
+    /// Releases resources owned by the runtime.
+    /// </summary>
     public void Dispose() => _gate.Dispose();
 
     internal ValueTask<Result<Unit, PipelineError>> DispatchUnlocked(
@@ -708,6 +738,15 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
 /// </summary>
 public static class ObserverExtensions
 {
+    /// <summary>
+    /// Composes two observers sequentially, short-circuiting when the first fails.
+    /// </summary>
+    /// <typeparam name="TState">The observed state type.</typeparam>
+    /// <typeparam name="TEvent">The observed event type.</typeparam>
+    /// <typeparam name="TEffect">The observed effect type.</typeparam>
+    /// <param name="first">The first observer to run.</param>
+    /// <param name="second">The second observer to run when the first succeeds.</param>
+    /// <returns>A composed observer.</returns>
     public static Observer<TState, TEvent, TEffect> Then<TState, TEvent, TEffect>(
         this Observer<TState, TEvent, TEffect> first,
         Observer<TState, TEvent, TEffect> second) =>
@@ -737,6 +776,15 @@ public static class ObserverExtensions
         return await second(state, @event, effect).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Runs the observer only when the predicate evaluates to true.
+    /// </summary>
+    /// <typeparam name="TState">The observed state type.</typeparam>
+    /// <typeparam name="TEvent">The observed event type.</typeparam>
+    /// <typeparam name="TEffect">The observed effect type.</typeparam>
+    /// <param name="observer">The observer to conditionally run.</param>
+    /// <param name="predicate">Predicate over the transition triple.</param>
+    /// <returns>An observer gated by the predicate.</returns>
     public static Observer<TState, TEvent, TEffect> Where<TState, TEvent, TEffect>(
         this Observer<TState, TEvent, TEffect> observer,
         Func<TState, TEvent, TEffect, bool> predicate) =>
@@ -745,6 +793,18 @@ public static class ObserverExtensions
                 ? observer(state, @event, effect)
                 : PipelineResult.Ok;
 
+    /// <summary>
+    /// Projects input transition values before delegating to another observer.
+    /// </summary>
+    /// <typeparam name="TState2">The observer's expected state type.</typeparam>
+    /// <typeparam name="TEvent2">The observer's expected event type.</typeparam>
+    /// <typeparam name="TEffect2">The observer's expected effect type.</typeparam>
+    /// <typeparam name="TState1">The incoming state type.</typeparam>
+    /// <typeparam name="TEvent1">The incoming event type.</typeparam>
+    /// <typeparam name="TEffect1">The incoming effect type.</typeparam>
+    /// <param name="observer">The target observer.</param>
+    /// <param name="project">Projection from incoming triple to target triple.</param>
+    /// <returns>An observer over the incoming types.</returns>
     public static Observer<TState1, TEvent1, TEffect1>
         Select<TState2, TEvent2, TEffect2, TState1, TEvent1, TEffect1>(
             this Observer<TState2, TEvent2, TEffect2> observer,
@@ -755,6 +815,15 @@ public static class ObserverExtensions
             return observer(s2, e2, eff2);
         };
 
+    /// <summary>
+    /// Catches observer pipeline errors and maps them to recovery results.
+    /// </summary>
+    /// <typeparam name="TState">The observed state type.</typeparam>
+    /// <typeparam name="TEvent">The observed event type.</typeparam>
+    /// <typeparam name="TEffect">The observed effect type.</typeparam>
+    /// <param name="observer">The observer to wrap.</param>
+    /// <param name="handler">Error handler for pipeline failures.</param>
+    /// <returns>An observer with error recovery.</returns>
     public static Observer<TState, TEvent, TEffect> Catch<TState, TEvent, TEffect>(
         this Observer<TState, TEvent, TEffect> observer,
         Func<PipelineError, Result<Unit, PipelineError>> handler) =>
@@ -783,6 +852,15 @@ public static class ObserverExtensions
         return result.IsErr ? handler(error) : result;
     }
 
+    /// <summary>
+    /// Runs two observers and preserves the first error encountered in evaluation order.
+    /// </summary>
+    /// <typeparam name="TState">The observed state type.</typeparam>
+    /// <typeparam name="TEvent">The observed event type.</typeparam>
+    /// <typeparam name="TEffect">The observed effect type.</typeparam>
+    /// <param name="first">The first observer.</param>
+    /// <param name="second">The second observer.</param>
+    /// <returns>A composed observer that reports the earliest failure.</returns>
     public static Observer<TState, TEvent, TEffect> Combine<TState, TEvent, TEffect>(
         this Observer<TState, TEvent, TEffect> first,
         Observer<TState, TEvent, TEffect> second) =>
@@ -835,6 +913,14 @@ public static class ObserverExtensions
 /// </summary>
 public static class InterpreterExtensions
 {
+    /// <summary>
+    /// Composes two interpreters and concatenates their produced events.
+    /// </summary>
+    /// <typeparam name="TEffect">The interpreted effect type.</typeparam>
+    /// <typeparam name="TEvent">The feedback event type.</typeparam>
+    /// <param name="first">The first interpreter to run.</param>
+    /// <param name="second">The second interpreter to run when the first succeeds.</param>
+    /// <returns>A composed interpreter that merges feedback events.</returns>
     public static Interpreter<TEffect, TEvent> Then<TEffect, TEvent>(
         this Interpreter<TEffect, TEvent> first,
         Interpreter<TEffect, TEvent> second) =>
@@ -905,6 +991,14 @@ public static class InterpreterExtensions
             : Result<TEvent[], PipelineError>.Ok(ConcatEvents(firstEvents, secondEvents));
     }
 
+    /// <summary>
+    /// Runs the interpreter only when the predicate evaluates to true.
+    /// </summary>
+    /// <typeparam name="TEffect">The interpreted effect type.</typeparam>
+    /// <typeparam name="TEvent">The feedback event type.</typeparam>
+    /// <param name="interpreter">The interpreter to conditionally run.</param>
+    /// <param name="predicate">Predicate that determines whether interpretation should occur.</param>
+    /// <returns>An interpreter gated by the predicate.</returns>
     public static Interpreter<TEffect, TEvent> Where<TEffect, TEvent>(
         this Interpreter<TEffect, TEvent> interpreter,
         Func<TEffect, bool> predicate) =>
@@ -914,11 +1008,28 @@ public static class InterpreterExtensions
                 : new ValueTask<Result<TEvent[], PipelineError>>(
                     Result<TEvent[], PipelineError>.Ok([]));
 
+    /// <summary>
+    /// Projects an incoming effect to the interpreter's expected effect type.
+    /// </summary>
+    /// <typeparam name="TEffect2">The effect type expected by the target interpreter.</typeparam>
+    /// <typeparam name="TEvent">The feedback event type.</typeparam>
+    /// <typeparam name="TEffect1">The incoming effect type.</typeparam>
+    /// <param name="interpreter">The target interpreter.</param>
+    /// <param name="project">Projection from incoming effect type to target effect type.</param>
+    /// <returns>An interpreter over the incoming effect type.</returns>
     public static Interpreter<TEffect1, TEvent> Select<TEffect2, TEvent, TEffect1>(
         this Interpreter<TEffect2, TEvent> interpreter,
         Func<TEffect1, TEffect2> project) =>
         effect => interpreter(project(effect));
 
+    /// <summary>
+    /// Catches interpreter pipeline errors and maps them to recovery results.
+    /// </summary>
+    /// <typeparam name="TEffect">The interpreted effect type.</typeparam>
+    /// <typeparam name="TEvent">The feedback event type.</typeparam>
+    /// <param name="interpreter">The interpreter to wrap.</param>
+    /// <param name="handler">Error handler for pipeline failures.</param>
+    /// <returns>An interpreter with error recovery.</returns>
     public static Interpreter<TEffect, TEvent> Catch<TEffect, TEvent>(
         this Interpreter<TEffect, TEvent> interpreter,
         Func<PipelineError, Result<TEvent[], PipelineError>> handler) =>

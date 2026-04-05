@@ -19,23 +19,41 @@ namespace Picea;
 /// <summary>
 /// A Decider is an Automaton that validates commands before transitioning.
 /// </summary>
+/// <typeparam name="TState">The state type managed by the decider.</typeparam>
+/// <typeparam name="TCommand">The command type representing intent.</typeparam>
+/// <typeparam name="TEvent">The event type emitted when commands are accepted.</typeparam>
+/// <typeparam name="TEffect">The effect type produced by state transitions.</typeparam>
+/// <typeparam name="TError">The domain error type returned when command validation fails.</typeparam>
+/// <typeparam name="TParameters">The initialization parameter type for the underlying automaton.</typeparam>
 public interface Decider<TState, TCommand, TEvent, TEffect, TError, TParameters>
     : Automaton<TState, TEvent, TEffect, TParameters>
 {
     /// <summary>
     /// Validates a command against the current state, producing events or an error.
     /// </summary>
+    /// <param name="state">The current state used for command validation.</param>
+    /// <param name="command">The command to validate and decide.</param>
+    /// <returns>An <c>Ok</c> containing events when accepted, or an <c>Err</c> containing a domain error.</returns>
     static abstract Result<TEvent[], TError> Decide(TState state, TCommand command);
 
     /// <summary>
     /// Whether the automaton has reached a terminal state.
     /// </summary>
+    /// <param name="state">The state to inspect.</param>
+    /// <returns><c>true</c> when no further command handling should occur; otherwise <c>false</c>.</returns>
     static virtual bool IsTerminal(TState state) => false;
 }
 
 /// <summary>
 /// Runtime that validates commands via Decide before dispatching events.
 /// </summary>
+/// <typeparam name="TDecider">The decider implementation that owns validation and transition logic.</typeparam>
+/// <typeparam name="TState">The state type managed by the runtime.</typeparam>
+/// <typeparam name="TCommand">The command type handled by the runtime.</typeparam>
+/// <typeparam name="TEvent">The event type emitted after successful decisions.</typeparam>
+/// <typeparam name="TEffect">The effect type produced by transitions.</typeparam>
+/// <typeparam name="TError">The domain error type returned for rejected commands.</typeparam>
+/// <typeparam name="TParameters">The initialization parameter type for startup.</typeparam>
 public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect, TError, TParameters> : IDisposable
     where TDecider : Decider<TState, TCommand, TEvent, TEffect, TError, TParameters>
 {
@@ -397,6 +415,14 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
         }
     }
 
+    /// <summary>
+    /// Resets the runtime state to the provided value.
+    /// </summary>
+    /// <param name="state">The state value to set as the new current state.</param>
     public void Reset(TState state) => _core.Reset(state);
+
+    /// <summary>
+    /// Releases resources owned by the runtime.
+    /// </summary>
     public void Dispose() => _core.Dispose();
 }

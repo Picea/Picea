@@ -85,5 +85,8 @@ public interface Automaton<TState, TEvent, TEffect, TParameters>
     /// <summary>
     /// Pure transition function: given state and event, produce new state and effect.
     /// </summary>
+    /// <param name="state">The current state before applying the event.</param>
+    /// <param name="event">The input event to apply.</param>
+    /// <returns>The next state and the effect produced by the transition.</returns>
     static abstract (TState State, TEffect Effect) Transition(TState state, TEvent @event);
 }
