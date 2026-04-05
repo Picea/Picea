@@ -17,6 +17,7 @@ Complete type and method documentation for the `Picea` package.
 | [`Unit`](runtime.md#unit) | `Picea` | Unit type for `Result<Unit, PipelineError>` |
 | [`Decider<TState, TCommand, TEvent, TEffect, TError, TParameters>`](decider.md) | `Picea` | Command validation interface |
 | [`DecidingRuntime<...>`](decider.md#decidingruntime) | `Picea` | Command-validating runtime |
+| [`GuardedDecider` and `GuardedDecidingRuntime`](guarded-decider.md) | `Picea.Commanding` | Staged authorization + validation + decision runtime |
 | [`Result<TSuccess, TError>`](result.md) | `Picea` | Discriminated union for error handling |
 | [`AutomatonDiagnostics`](diagnostics.md) | `Picea` | OpenTelemetry tracing |
 
@@ -26,10 +27,12 @@ Complete type and method documentation for the `Picea` package.
 Automaton<S, E, F, P>          ← kernel interface (pure)
     │
     ├── Decider<S, C, E, F, Err, P>    ← extends with Decide + IsTerminal
+    │   └── GuardedDecider<S, C, E, F, P>    ← staged decision contract (proof-token command)
     │
     └── AutomatonRuntime<A, S, E, F, P>    ← executes the loop
             │
             ├── DecidingRuntime<D, S, C, E, F, Err, P>  ← wraps with Handle
+            └── GuardedDecidingRuntime<...>              ← wraps with Handle(principal, command)
             │
             ├── Observer<S, E, F>       ← sees transitions, returns Result<Unit, PipelineError>
             │   └── ObserverExtensions  ← Then, Where, Select, Catch, Combine
@@ -52,5 +55,6 @@ AutomatonDiagnostics        ← ActivitySource for tracing
 | `Automaton.cs` | `Automaton<TState, TEvent, TEffect, TParameters>` |
 | `Runtime.cs` | `AutomatonRuntime<...>`, `Observer<...>`, `Interpreter<...>`, `ObserverExtensions`, `InterpreterExtensions`, `PipelineError`, `PipelineResult`, `Unit` |
 | `Decider.cs` | `Decider<...>`, `DecidingRuntime<...>` |
+| `Commanding/GuardedDecider.cs` | `Validator`, `Policy`, `ValidCommand`, `DenialKind`, `DenialObserver`, `GuardedAuthorization`, `GuardedValidation`, `GuardedDecider`, `GuardedDecidingRuntime` |
 | `Result.cs` | `Result<TSuccess, TError>` |
 | `Diagnostics.cs` | `AutomatonDiagnostics` |

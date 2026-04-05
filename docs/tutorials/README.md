@@ -14,11 +14,16 @@ End-to-end walkthroughs that build complete working systems on the Picea kernel.
 | # | Tutorial | What You'll Build | Concepts Used |
 |---|----------|-------------------|---------------|
 | 01 | [Getting Started](01-getting-started.md) | A smart thermostat with feedback loop | [Kernel](../concepts/the-kernel.md), [Runtime](../concepts/the-runtime.md) |
-| 02 | [MVU Runtime](02-mvu-runtime.md) | A Model-View-Update loop with view history | [Kernel](../concepts/the-kernel.md), [Observer composition](../guides/observer-composition.md) |
-| 03 | [Event-Sourced Aggregate](03-event-sourced-aggregate.md) | Command-driven aggregate with replay and projections | [Decider](../concepts/the-decider.md), [Error handling](../guides/error-handling-patterns.md) |
-| 04 | [Actor System](04-actor-system.md) | Mailbox actor with channels and fire-and-forget | [Kernel](../concepts/the-kernel.md), [Custom runtimes](../guides/building-custom-runtimes.md) |
 | 05 | [Command Validation](05-command-validation.md) | Domain validation with the Decider and Result | [Decider](../concepts/the-decider.md), [Result](../reference/result.md) |
 | 06 | [Observability](06-observability.md) | Distributed tracing with zero dependencies | [Diagnostics](../reference/diagnostics.md) |
+
+## Planned Tutorials
+
+The following tutorial topics are planned and currently documented in concepts/guides only:
+
+- 02: MVU Runtime
+- 03: Event-Sourced Aggregate
+- 04: Actor System
 
 ## The Big Idea
 
@@ -35,17 +40,14 @@ You write your domain logic once as a pure transition function. Each tutorial sh
 ```text
 Getting Started (01)
         │
-        ├──► MVU Runtime (02)
-        ├──► Event-Sourced Aggregate (03) ──► Command Validation (05)
-        └──► Actor System (04)
-                                                      │
-                                              Observability (06) ◄──┘
+        ├──► Command Validation (05)
+        └──► Observability (06)
 ```
 
 1. **[Getting Started](01-getting-started.md)** — the kernel and the shared runtime.
-2. **Pick your runtime** — 02, 03, or 04 based on your pattern.
-3. **[Command Validation](05-command-validation.md)** — when you need to validate before producing events.
-4. **[Observability](06-observability.md)** — production tracing across all runtimes.
+2. **[Command Validation](05-command-validation.md)** — baseline Decider plus guarded staged command handling.
+3. **[Observability](06-observability.md)** — production tracing across all runtimes.
+4. For MVU/Event-Sourced/Actor choices today, read [Runtimes Compared](../concepts/runtimes-compared.md) and [Building Custom Runtimes](../guides/building-custom-runtimes.md).
 
 ## What to Read Next
 
