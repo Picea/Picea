@@ -102,6 +102,18 @@ Reference docs:
 - [Decider, DecidingRuntime](../reference/decider.md)
 - [GuardedDecider, GuardedDecidingRuntime](../reference/guarded-decider.md)
 
+### Explicit Choice: Where Do Command Guards Run?
+
+Choose the runtime path deliberately based on where authorization/validation responsibility belongs.
+
+| If your intent is... | Choose | Consequence |
+| -------------------- | ------ | ----------- |
+| Runtime-enforced command checks in one atomic command boundary | `GuardedDecidingRuntime` | `Authorize -> Validate -> Decide` always runs inside `Handle(principal, command)` |
+| Command validation only (no principal policy stage) | `DecidingRuntime` | Single-stage `Decide`, then dispatch through transitions |
+| Transition/event execution where command checks are handled upstream or not needed (for example replay) | `AutomatonRuntime` (even with a guarded model type) | No runtime invocation of `Authorize`/`Validate`; event dispatch + transition loop only |
+
+If you choose `AutomatonRuntime` with a guarded model type, make that choice explicit in architecture docs so the enforcement boundary is clear.
+
 ## What's Next
 
 | If you want to… | Read |

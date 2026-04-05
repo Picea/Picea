@@ -92,6 +92,28 @@ Validates and handles a command: Decide → Dispatch events → return new state
 - Adds staged command handling via `Policy` then `Validator` before `Decide`
 - Preserves the same success/error channel and state-transition behavior
 
+### Runtime Pairing Warning
+
+`GuardedDecider` also satisfies `Automaton`, so it can technically be hosted by `AutomatonRuntime`.
+This can be a valid architecture choice, but it should be an explicit one.
+
+When you host it with `AutomatonRuntime`, guarded command semantics are **not** enforced by the runtime path:
+
+1. `Authorize` is not invoked
+2. `Validate` is not invoked
+3. `DenialObserver` is never called
+4. You are running event dispatch/transition only
+
+This is typically correct/useful when:
+
+1. You are replaying trusted historical events and do not want command checks during replay
+2. Authorization and validation are enforced upstream (API/application layer), and runtime should only apply transitions
+3. You are building a custom runtime pipeline where command policy is intentionally outside the core event loop
+
+Prefer `GuardedDecidingRuntime` when you want command semantics enforced at the runtime boundary itself (single atomic `Handle(principal, command)` with built-in staged denial behavior).
+
+In short: both can be correct, but choose deliberately and document where authorization/validation responsibility lives.
+
 Full API surface (delegates, contracts, runtime signatures, and examples) is documented in [Guarded Decider](guarded-decider.md).
 
 ---
