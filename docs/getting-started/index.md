@@ -88,6 +88,32 @@ Assert.Equal(1, next.Count);
 3. The **runtime** executed the transition function in a loop, calling your observer and interpreter
 4. You tested the transition function **directly** — no runtime, no async, no mocking
 
+## Choose a Command Runtime
+
+When your model evolves from event dispatch (`AutomatonRuntime`) to command handling, pick the runtime that matches your needs:
+
+| If you need... | Use | Why |
+| -------------- | --- | --- |
+| Command handling with domain validation only | `DecidingRuntime` | `Decider.Decide` returns `Result<TEvent[], TError>` in one stage |
+| Explicit authorization + validation + decision stages | `GuardedDecidingRuntime` | Runs `Authorize -> Validate -> Decide` atomically and supports denial auditing |
+
+Reference docs:
+
+- [Decider, DecidingRuntime](../reference/decider.md)
+- [GuardedDecider, GuardedDecidingRuntime](../reference/guarded-decider.md)
+
+### Explicit Choice: Where Do Command Guards Run?
+
+Choose the runtime path deliberately based on where authorization/validation responsibility belongs.
+
+| If your intent is... | Choose | Consequence |
+| -------------------- | ------ | ----------- |
+| Runtime-enforced command checks in one atomic command boundary | `GuardedDecidingRuntime` | `Authorize -> Validate -> Decide` always runs inside `Handle(principal, command)` |
+| Command validation only (no principal policy stage) | `DecidingRuntime` | Single-stage `Decide`, then dispatch through transitions |
+| Transition/event execution where command checks are handled upstream or not needed (for example replay) | `AutomatonRuntime` (even with a guarded model type) | No runtime invocation of `Authorize`/`Validate`; event dispatch + transition loop only |
+
+If you choose `AutomatonRuntime` with a guarded model type, make that choice explicit in architecture docs so the enforcement boundary is clear.
+
 ## What's Next
 
 | If you want to… | Read |

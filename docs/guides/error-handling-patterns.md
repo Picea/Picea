@@ -160,12 +160,20 @@ var runtime = await GuardedDecidingRuntime<
         default,
         observer,
         interpreter,
-        denialObserver: (kind, _, _, _, error) =>
+        denialObserver: (kind, principal, state, command, error) =>
         {
-            audit.Write($"Guarded denial at {kind}: {error}");
+            audit.Write($"Guarded denial at {kind}. Principal={principal}, Command={command}, Error={error}");
             return ValueTask.CompletedTask;
         });
 ```
+
+`DenialObserver` parameter order is:
+
+1. `kind` (`DenialKind`)
+2. `principal`
+3. `state`
+4. `command`
+5. `error`
 
 ## See Also
 
