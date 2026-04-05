@@ -88,6 +88,20 @@ Assert.Equal(1, next.Count);
 3. The **runtime** executed the transition function in a loop, calling your observer and interpreter
 4. You tested the transition function **directly** — no runtime, no async, no mocking
 
+## Choose a Command Runtime
+
+When your model evolves from event dispatch (`AutomatonRuntime`) to command handling, pick the runtime that matches your needs:
+
+| If you need... | Use | Why |
+| -------------- | --- | --- |
+| Command handling with domain validation only | `DecidingRuntime` | `Decider.Decide` returns `Result<TEvent[], TError>` in one stage |
+| Explicit authorization + validation + decision stages | `GuardedDecidingRuntime` | Runs `Authorize -> Validate -> Decide` atomically and supports denial auditing |
+
+Reference docs:
+
+- [Decider, DecidingRuntime](../reference/decider.md)
+- [GuardedDecider, GuardedDecidingRuntime](../reference/guarded-decider.md)
+
 ## What's Next
 
 | If you want to… | Read |

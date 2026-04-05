@@ -37,15 +37,15 @@ The Decide-only `Decider` API above remains the baseline and stays fully support
 
 When you want explicit staged hardening, use the additive secure APIs:
 
-- `Validator` — stage 1, feasibility/invariant checks
-- `Policy` — stage 2, authorization checks (optional caller context)
-- `GuardedDecider` — staged command contract (`Validate` -> `Authorize` -> `Decide`)
+- `Policy` — stage 1, authorization checks (optional caller context)
+- `Validator` — stage 2, feasibility/invariant checks
+- `GuardedDecider` — staged command contract (`Authorize` -> `Validate` -> `Decide`)
 - `GuardedDecidingRuntime` — runtime wrapper that executes the staged pipeline atomically
 
 Pipeline semantics:
 
-1. `Validate` short-circuits on rejection
-2. `Authorize` short-circuits on rejection
+1. `Authorize` short-circuits on rejection
+2. `Validate` short-circuits on rejection
 3. `Decide` produces events
 4. Events are dispatched through `Transition`
 
@@ -91,6 +91,8 @@ Validates and handles a command: Decide → Dispatch events → return new state
 - Same runtime guarantees (`State`, `Events`, terminal checks, atomic `Handle`)
 - Adds staged command handling via `Policy` then `Validator` before `Decide`
 - Preserves the same success/error channel and state-transition behavior
+
+Full API surface (delegates, contracts, runtime signatures, and examples) is documented in [Guarded Decider](guarded-decider.md).
 
 ---
 

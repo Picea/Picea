@@ -199,8 +199,8 @@ Console.WriteLine(runtime.Events.Count); // still 5 (no new events dispatched)
 
 Use the additive secure APIs when you want explicit stage boundaries:
 
-1. `Validate` for feasibility and invariants
-2. `Authorize` for caller permission checks
+1. `Authorize` for caller permission checks
+2. `Validate` for feasibility and invariants
 3. `Decide` for event production
 
 `GuardedDecidingRuntime` runs these stages atomically in one `Handle` call.
@@ -220,9 +220,9 @@ var guardedRuntime = await GuardedDecidingRuntime<
         default,
         observer,
         interpreter,
-        denialObserver: (kind, _, _, _, error) =>
+        denialObserver: (kind, principal, state, command, error) =>
         {
-            Console.WriteLine($"Denied at {kind}: {error}");
+            Console.WriteLine($"Denied at {kind}. Principal={principal}, Command={command}, Error={error}");
             return ValueTask.CompletedTask;
         });
 
