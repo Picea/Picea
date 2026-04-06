@@ -10,6 +10,7 @@ Deep-dive explanations of the core ideas behind Picea. Read these to understand 
 | ------- | ---------------- |
 | [The Kernel](the-kernel.md) | The Mealy machine interface — `Initialize` + `Transition` |
 | [The Runtime](the-runtime.md) | The monadic left fold — Observer + Interpreter |
+| [Event Log Observer And Replay Model](event-log-replay-model.md) | Append-only event capture and deterministic replay model |
 | [The Decider](the-decider.md) | Command validation — `Decide` + `IsTerminal` |
 | [Composition](composition.md) | How automata compose — product, sum, feedback |
 | [Runtimes Compared](runtimes-compared.md) | MVU vs Event Sourcing vs Actor — when to use which |
