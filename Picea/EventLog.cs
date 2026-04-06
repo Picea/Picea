@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Runtime.CompilerServices;
 
 namespace Picea;
 
@@ -54,6 +55,76 @@ public sealed class JsonEventSerializer(JsonSerializerOptions? options = null) :
 }
 
 /// <summary>
+/// Storage capability for persisting and loading event-log entries.
+/// </summary>
+/// <typeparam name="TEvent">The event type.</typeparam>
+/// <param name="SaveEntries">Persists the provided entry stream.</param>
+/// <param name="LoadEntries">Loads an entry stream from storage.</param>
+public readonly record struct EventLogStorage<TEvent>(
+    Func<IAsyncEnumerable<LogEntry<TEvent>>, CancellationToken, ValueTask> SaveEntries,
+    Func<CancellationToken, IAsyncEnumerable<LogEntry<TEvent>>> LoadEntries);
+
+/// <summary>
+/// Factory methods for common event-log storage adapters.
+/// </summary>
+public static class EventLogStorage
+{
+    /// <summary>
+    /// Creates a JSON Lines file-based storage adapter.
+    /// </summary>
+    /// <typeparam name="TEvent">The event type.</typeparam>
+    /// <param name="path">The JSONL file path.</param>
+    /// <param name="serializer">The serializer capability.</param>
+    /// <returns>A storage adapter backed by a JSONL file.</returns>
+    public static EventLogStorage<TEvent> JsonLinesFile<TEvent>(string path, EventSerializer serializer)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(serializer);
+
+        return new EventLogStorage<TEvent>(
+            SaveEntries: async (entries, cancellationToken) =>
+            {
+                var directory = Path.GetDirectoryName(path);
+                if (!string.IsNullOrWhiteSpace(directory))
+                    Directory.CreateDirectory(directory);
+
+                await using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 16 * 1024, useAsync: true);
+                await using var writer = new StreamWriter(stream);
+
+                await foreach (var entry in entries.WithCancellation(cancellationToken).ConfigureAwait(false))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await writer.WriteLineAsync(serializer.Serialize(entry)).ConfigureAwait(false);
+                }
+            },
+                LoadEntries: cancellationToken => ReadEntries<TEvent>(path, serializer, cancellationToken));
+    }
+
+    private static async IAsyncEnumerable<LogEntry<TEvent>> ReadEntries<TEvent>(
+        string path,
+        EventSerializer serializer,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 16 * 1024, useAsync: true);
+        using var reader = new StreamReader(stream);
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+            if (line is null)
+                yield break;
+
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            var entry = serializer.Deserialize<LogEntry<TEvent>>(line);
+            yield return entry;
+        }
+    }
+}
+
+/// <summary>
 /// Static factory and persistence entry points for event logs.
 /// </summary>
 public static class EventLog
@@ -91,7 +162,7 @@ public static class EventLog
 /// <typeparam name="TEvent">The event type captured by the log.</typeparam>
 public sealed class EventLog<TEvent>
 {
-    private readonly object _sync = new();
+    private readonly Lock _sync = new();
     private readonly List<LogEntry<TEvent>> _entries;
     private long _nextSequenceNumber;
 
@@ -116,7 +187,7 @@ public sealed class EventLog<TEvent>
         get
         {
             lock (_sync)
-                return _entries.Count == 0 ? Array.Empty<LogEntry<TEvent>>() : _entries.ToArray();
+                return _entries.Count == 0 ? Array.Empty<LogEntry<TEvent>>() : [.. _entries];
         }
     }
 
@@ -264,25 +335,23 @@ public sealed class EventLog<TEvent>
     public async ValueTask SaveAsync(
         string path,
         EventSerializer serializer,
+        CancellationToken cancellationToken = default) =>
+        await SaveAsync(EventLogStorage.JsonLinesFile<TEvent>(path, serializer), cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
+    /// Saves the log using the provided storage capability.
+    /// </summary>
+    /// <param name="storage">The storage capability.</param>
+    /// <param name="cancellationToken">Cancellation token for asynchronous saving.</param>
+    public async ValueTask SaveAsync(
+        EventLogStorage<TEvent> storage,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        ArgumentNullException.ThrowIfNull(serializer);
-
-        var directory = Path.GetDirectoryName(path);
-        if (!string.IsNullOrWhiteSpace(directory))
-            Directory.CreateDirectory(directory);
+        if (storage.SaveEntries is null)
+            throw new ArgumentException($"{nameof(EventLogStorage<TEvent>.SaveEntries)} cannot be null.", nameof(storage));
 
         var snapshot = SnapshotOrderedBySequence();
-
-        await using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 16 * 1024, useAsync: true);
-        await using var writer = new StreamWriter(stream);
-
-        for (var i = 0; i < snapshot.Length; i++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            await writer.WriteLineAsync(serializer.Serialize(snapshot[i])).ConfigureAwait(false);
-        }
+        await storage.SaveEntries(AsAsyncEnumerable(snapshot, cancellationToken), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -295,27 +364,36 @@ public sealed class EventLog<TEvent>
     public static async ValueTask<EventLog<TEvent>> LoadAsync(
         string path,
         EventSerializer serializer,
+        CancellationToken cancellationToken = default) =>
+        await LoadAsync(EventLogStorage.JsonLinesFile<TEvent>(path, serializer), cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
+    /// Loads an event log using the provided storage capability.
+    /// </summary>
+    /// <param name="storage">The storage capability.</param>
+    /// <param name="cancellationToken">Cancellation token for asynchronous loading.</param>
+    /// <returns>The loaded event log.</returns>
+    /// <exception cref="InvalidDataException">Thrown when sequence numbers are invalid.</exception>
+    public static async ValueTask<EventLog<TEvent>> LoadAsync(
+        EventLogStorage<TEvent> storage,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        ArgumentNullException.ThrowIfNull(serializer);
+        if (storage.LoadEntries is null)
+            throw new ArgumentException($"{nameof(EventLogStorage<TEvent>.LoadEntries)} cannot be null.", nameof(storage));
 
         var entries = new List<LogEntry<TEvent>>();
+        var sequenceNumbers = new HashSet<long>();
 
-        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 16 * 1024, useAsync: true);
-        using var reader = new StreamReader(stream);
-
-        while (true)
+        await foreach (var entry in storage.LoadEntries(cancellationToken).WithCancellation(cancellationToken).ConfigureAwait(false))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var line = await reader.ReadLineAsync().ConfigureAwait(false);
-            if (line is null)
-                break;
 
-            if (string.IsNullOrWhiteSpace(line))
-                continue;
+            if (entry.SequenceNumber <= 0)
+                throw new InvalidDataException($"Invalid sequence number '{entry.SequenceNumber}'. Sequence numbers must be greater than zero.");
 
-            var entry = serializer.Deserialize<LogEntry<TEvent>>(line);
+            if (!sequenceNumbers.Add(entry.SequenceNumber))
+                throw new InvalidDataException($"Duplicate sequence number '{entry.SequenceNumber}' detected while loading the event log.");
+
             entries.Add(entry);
         }
 
@@ -334,6 +412,19 @@ public sealed class EventLog<TEvent>
                 return Array.Empty<LogEntry<TEvent>>();
 
             return [.. _entries.OrderBy(static entry => entry.SequenceNumber)];
+        }
+    }
+
+    private static async IAsyncEnumerable<LogEntry<TEvent>> AsAsyncEnumerable(
+        IReadOnlyList<LogEntry<TEvent>> entries,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await ValueTask.CompletedTask;
+
+        for (var i = 0; i < entries.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return entries[i];
         }
     }
 }

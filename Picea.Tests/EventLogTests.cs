@@ -95,6 +95,98 @@ public sealed class EventLogTests
     }
 
     [Test]
+    public async Task SaveLoad_StorageOverloads_RoundTripsJsonlAndSupportsReplay()
+    {
+        var serializer = new JsonEventSerializer();
+        var (_, log) = EventLog.Create<Unit, DeltaEvent, Unit>();
+
+        log.Append(new DeltaEvent(2), new DateTimeOffset(2026, 4, 6, 10, 0, 0, TimeSpan.Zero));
+        log.Append(new DeltaEvent(-1), new DateTimeOffset(2026, 4, 6, 10, 1, 0, TimeSpan.Zero));
+        log.Append(new DeltaEvent(5), new DateTimeOffset(2026, 4, 6, 10, 2, 0, TimeSpan.Zero));
+
+        var path = Path.Combine(Path.GetTempPath(), $"picea-event-log-storage-{Guid.NewGuid():N}.jsonl");
+        var storage = EventLogStorage.JsonLinesFile<DeltaEvent>(path, serializer);
+
+        try
+        {
+            await log.SaveAsync(storage);
+            var loaded = await EventLog<DeltaEvent>.LoadAsync(storage);
+
+            await Assert.That(loaded.Count).IsEqualTo(3);
+            await Assert.That(loaded[0].Event.Delta).IsEqualTo(2);
+            await Assert.That(loaded[1].Event.Delta).IsEqualTo(-1);
+            await Assert.That(loaded[2].Event.Delta).IsEqualTo(5);
+
+            var replayed = loaded.Replay<DeltaAutomaton, int, Unit, Unit>(default);
+            await Assert.That(replayed).IsEqualTo(6);
+        }
+        finally
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+    }
+
+    [Test]
+    public async Task LoadAsync_StorageOverload_ThrowsOnNonPositiveSequenceNumber()
+    {
+        var storage = new EventLogStorage<DeltaEvent>(
+            SaveEntries: static (_, _) => ValueTask.CompletedTask,
+            LoadEntries: static _ => InvalidSequenceEntries());
+
+        await Assert.That(() => EventLog<DeltaEvent>.LoadAsync(storage).AsTask())
+            .ThrowsExactly<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task LoadAsync_StorageOverload_ThrowsOnDuplicateSequenceNumber()
+    {
+        var storage = new EventLogStorage<DeltaEvent>(
+            SaveEntries: static (_, _) => ValueTask.CompletedTask,
+            LoadEntries: static _ => DuplicateSequenceEntries());
+
+        await Assert.That(() => EventLog<DeltaEvent>.LoadAsync(storage).AsTask())
+            .ThrowsExactly<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task SaveAsync_StorageOverload_RespectsCancellationToken()
+    {
+        var (_, log) = EventLog.Create<Unit, DeltaEvent, Unit>();
+        log.Append(new DeltaEvent(1));
+
+        var storage = new EventLogStorage<DeltaEvent>(
+            SaveEntries: static async (entries, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await foreach (var _ in entries.WithCancellation(cancellationToken))
+                {
+                }
+            },
+            LoadEntries: static _ => EmptyEntries());
+
+        using var cancellationTokenSource = new CancellationTokenSource();
+        await cancellationTokenSource.CancelAsync();
+
+        await Assert.That(() => log.SaveAsync(storage, cancellationTokenSource.Token).AsTask())
+            .ThrowsExactly<OperationCanceledException>();
+    }
+
+    [Test]
+    public async Task LoadAsync_StorageOverload_RespectsCancellationToken()
+    {
+        var storage = new EventLogStorage<DeltaEvent>(
+            SaveEntries: static (_, _) => ValueTask.CompletedTask,
+            LoadEntries: static cancellationToken => CanceledEntries(cancellationToken));
+
+        using var cancellationTokenSource = new CancellationTokenSource();
+        await cancellationTokenSource.CancelAsync();
+
+        await Assert.That(() => EventLog<DeltaEvent>.LoadAsync(storage, cancellationTokenSource.Token).AsTask())
+            .ThrowsExactly<OperationCanceledException>();
+    }
+
+    [Test]
     public async Task ObserverCombinators_Where_CanFilterLoggedEvents()
     {
         var (logObserver, log) = EventLog.Create<CounterState, CounterEvent, CounterEffect>();
@@ -136,5 +228,31 @@ public sealed class EventLogTests
 
         public static (int State, Unit Effect) Transition(int state, DeltaEvent @event) =>
             (state + @event.Delta, Unit.Value);
+    }
+
+    private static async IAsyncEnumerable<LogEntry<DeltaEvent>> InvalidSequenceEntries()
+    {
+        await ValueTask.CompletedTask;
+        yield return new LogEntry<DeltaEvent>(0, DateTimeOffset.UtcNow, new DeltaEvent(1));
+    }
+
+    private static async IAsyncEnumerable<LogEntry<DeltaEvent>> DuplicateSequenceEntries()
+    {
+        await ValueTask.CompletedTask;
+        yield return new LogEntry<DeltaEvent>(1, DateTimeOffset.UtcNow, new DeltaEvent(1));
+        yield return new LogEntry<DeltaEvent>(1, DateTimeOffset.UtcNow, new DeltaEvent(2));
+    }
+
+    private static async IAsyncEnumerable<LogEntry<DeltaEvent>> EmptyEntries()
+    {
+        await ValueTask.CompletedTask;
+        yield break;
+    }
+
+    private static async IAsyncEnumerable<LogEntry<DeltaEvent>> CanceledEntries(CancellationToken cancellationToken)
+    {
+        await ValueTask.CompletedTask;
+        cancellationToken.ThrowIfCancellationRequested();
+        yield break;
     }
 }

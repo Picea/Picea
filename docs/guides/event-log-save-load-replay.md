@@ -1,9 +1,8 @@
 # Event Log Save, Load, And Replay (JSONL)
 
-This guide shows a practical save/load replay workflow using JSON Lines today, while issue #35 is still in flight.
+This guide shows save/load/replay with the implemented `EventLog<TEvent>` APIs.
 
-> **Status:** Transitional guide.
-> **Tracking:** TODO(issue #35): replace adapter code with native `EventLog<TEvent>` APIs when shipped.
+It also shows how to switch storage backends via `EventLogStorage<TEvent>` while keeping replay semantics unchanged.
 
 ## When To Use This
 
@@ -13,133 +12,132 @@ Use this pattern when you need deterministic session replay now:
 - Running visual regression from fixed event streams
 - Loading test harness sessions in CI
 
-## 1. Define A Log Entry Record
+## Core vs Storage Boundary
+
+Keep this distinction clear:
+
+- `EventLog<TEvent>`: append and replay semantics.
+- `EventLogStorage<TEvent>`: persistence capability (file, memory, cloud, etc.).
+- `EventSerializer`: serialization capability.
+
+The default storage adapter is JSONL via `EventLogStorage.JsonLinesFile<TEvent>(...)`.
+
+## 1. Create Observer + Event Log
 
 ```csharp
-public readonly record struct ReplayLogEntry<TEvent>(
-    long SequenceNumber,
-    DateTimeOffset Timestamp,
-    TEvent Event);
-```
+var (logObserver, eventLog) = EventLog.Create<CounterState, CounterEvent, CounterEffect>();
 
-## 2. Build A Logging Observer
-
-```csharp
-var nextSequence = 0L;
-var entries = new List<ReplayLogEntry<CounterEvent>>();
-
-Observer<CounterState, CounterEvent, CounterEffect> logObserver =
-    (state, @event, effect) =>
-    {
-        var sequenceNumber = Interlocked.Increment(ref nextSequence);
-        entries.Add(new ReplayLogEntry<CounterEvent>(
-            sequenceNumber,
-            DateTimeOffset.UtcNow,
-            @event));
-
-        return PipelineResult.Ok;
-    };
-```
-
-Compose it with your existing observer pipeline:
-
-```csharp
 var observer = logObserver.Then(metricsObserver).Then(renderObserver);
 ```
 
-## 3. Save As JSONL
+`logObserver` is a normal observer and composes with existing observer pipelines.
+
+## 2. Save Using Default JSONL Adapter
 
 ```csharp
-using System.Text.Json;
-
-static async ValueTask SaveJsonLines<TEvent>(
-    string path,
-    IReadOnlyList<ReplayLogEntry<TEvent>> entries,
-    JsonSerializerOptions? options = null,
-    CancellationToken cancellationToken = default)
-{
-    await using var stream = File.Create(path);
-    await using var writer = new StreamWriter(stream);
-
-    foreach (var entry in entries)
-    {
-        var json = JsonSerializer.Serialize(entry, options);
-        await writer.WriteLineAsync(json.AsMemory(), cancellationToken);
-    }
-}
+var serializer = new JsonEventSerializer();
+await eventLog.SaveAsync("session.jsonl", serializer);
 ```
 
-## 4. Load From JSONL
+Equivalent explicit storage-capability form:
 
 ```csharp
-using System.Text.Json;
+var serializer = new JsonEventSerializer();
+var storage = EventLogStorage.JsonLinesFile<CounterEvent>("session.jsonl", serializer);
 
-static async ValueTask<IReadOnlyList<ReplayLogEntry<TEvent>>> LoadJsonLines<TEvent>(
-    string path,
-    JsonSerializerOptions? options = null,
-    CancellationToken cancellationToken = default)
+await eventLog.SaveAsync(storage);
+```
+
+## 3. Load From JSONL
+
+```csharp
+var serializer = new JsonEventSerializer();
+var loadedLog = await EventLog.LoadAsync<CounterEvent>("session.jsonl", serializer);
+```
+
+You can also load through an explicit storage capability:
+
+```csharp
+var serializer = new JsonEventSerializer();
+var storage = EventLogStorage.JsonLinesFile<CounterEvent>("session.jsonl", serializer);
+var loadedLog = await EventLog<CounterEvent>.LoadAsync(storage);
+```
+
+## 4. Replay Through The Automaton
+
+Replay is deterministic because entries are applied in sequence-number order.
+
+```csharp
+var finalState = loadedLog.Replay<Counter, CounterState, CounterEffect, Unit>(default);
+
+var stateAtSequence10 = loadedLog.ReplayUntil<Counter, CounterState, CounterEffect, Unit>(
+    default,
+    sequenceNumber: 10);
+```
+
+Optional per-step callback for projections/debug views:
+
+```csharp
+var finalState = loadedLog.Replay<Counter, CounterState, CounterEffect, Unit>(
+    default,
+    (sequenceNumber, state, @event) =>
+    {
+        // Project replay progress into diagnostics/UI.
+    });
+```
+
+## 5. Custom Storage Example
+
+The storage abstraction lets you keep replay semantics while swapping persistence backends.
+
+In-memory example:
+
+```csharp
+var persisted = new List<LogEntry<CounterEvent>>();
+
+var memoryStorage = new EventLogStorage<CounterEvent>(
+    SaveEntries: async (entries, cancellationToken) =>
+    {
+        persisted.Clear();
+        await foreach (var entry in entries.WithCancellation(cancellationToken))
+        {
+            persisted.Add(entry);
+        }
+    },
+    LoadEntries: cancellationToken => LoadFromMemory(persisted, cancellationToken));
+
+await eventLog.SaveAsync(memoryStorage);
+var loadedLog = await EventLog<CounterEvent>.LoadAsync(memoryStorage);
+
+static async IAsyncEnumerable<LogEntry<CounterEvent>> LoadFromMemory(
+    IReadOnlyList<LogEntry<CounterEvent>> entries,
+    [EnumeratorCancellation] CancellationToken cancellationToken)
 {
-    var result = new List<ReplayLogEntry<TEvent>>();
+    await ValueTask.CompletedTask;
 
-    using var stream = File.OpenRead(path);
-    using var reader = new StreamReader(stream);
-
-    while (!reader.EndOfStream)
+    for (var i = 0; i < entries.Count; i++)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var line = await reader.ReadLineAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(line))
-            continue;
-
-        var entry = JsonSerializer.Deserialize<ReplayLogEntry<TEvent>>(line, options)
-            ?? throw new InvalidOperationException("Unable to deserialize replay log entry.");
-
-        result.Add(entry);
+        yield return entries[i];
     }
-
-    return result;
 }
 ```
 
-## 5. Replay Through The Automaton
+Cloud-style capability follows the same shape: `SaveEntries` writes each `LogEntry<TEvent>` to your service, `LoadEntries` streams entries back for replay.
 
-Replay does not need observer side effects, so use a no-op observer/interpreter and dispatch the loaded events in order.
+## JSONL Shape
 
-```csharp
-var runtime = await AutomatonRuntime<Counter, CounterState, CounterEvent, CounterEffect, Unit>
-    .Start(
-        default,
-        observer: (_, _, _) => PipelineResult.Ok,
-        interpreter: _ => InterpreterResult<CounterEvent>.Empty);
+Default JSONL storage writes one entry per line:
 
-var loadedEntries = await LoadJsonLines<CounterEvent>("session.jsonl");
-
-foreach (var entry in loadedEntries.OrderBy(x => x.SequenceNumber))
-{
-    var dispatchResult = await runtime.Dispatch(entry.Event);
-    if (dispatchResult.IsErr)
-        throw new InvalidOperationException($"Replay failed at sequence #{entry.SequenceNumber}.");
-}
-
-var finalState = runtime.State;
+```json
+{"sequenceNumber":1,"timestamp":"2026-04-06T12:34:56.0000000+00:00","event":{"kind":"Increment"}}
 ```
-
-## Planned Native API Mapping (Issue #35)
-
-When issue #35 lands, this guide should simplify to native methods:
-
-- `EventLog.Create<TState, TEvent, TEffect>()`
-- `eventLog.SaveAsync(path, serializer)`
-- `EventLog.LoadAsync<TEvent>(path, serializer)`
-- `eventLog.Replay<TAutomaton, TParameters>(parameters)`
-- `eventLog.ReplayUntil<TAutomaton, TParameters>(parameters, sequenceNumber)`
-
-> **TODO(issue #35):** Replace local helpers (`ReplayLogEntry`, `SaveJsonLines`, `LoadJsonLines`) with final public API examples.
 
 ## Common Pitfalls
 
-- Do not depend on local clock ordering alone; replay by `SequenceNumber`.
-- Keep transition logic pure; non-deterministic transition code breaks replay determinism.
+- Do not couple replay semantics to backend-specific ordering guarantees.
+- Replay by `SequenceNumber`, not by storage insertion metadata.
+- Keep transition logic pure; non-deterministic transitions break replay determinism.
 - Treat serialization failures as data-quality errors and fail fast in CI replay workflows.
 
 ## See Also
@@ -147,4 +145,3 @@ When issue #35 lands, this guide should simplify to native methods:
 - [Observer Composition](observer-composition.md)
 - [The Runtime](../concepts/the-runtime.md)
 - [Event Log Observer And Replay Model](../concepts/event-log-replay-model.md)
-- [Issue #35](https://github.com/Picea/Picea/issues/35)
