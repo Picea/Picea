@@ -23,6 +23,7 @@ public class PiceaBenchmarks
     private AutomatonRuntime<BenchAutomaton, BenchState, BenchEvent, BenchEffect, Unit> _runtimeObserver = null!;
     private AutomatonRuntime<BenchAutomaton, BenchState, BenchEvent, BenchEffect, Unit> _runtimeFeedback = null!;
     private AutomatonRuntime<BenchAutomaton, BenchState, BenchEvent, BenchEffect, Unit> _runtimeComposed = null!;
+    private AutomatonRuntime<BenchAutomaton, BenchState, BenchEvent, BenchEffect, Unit> _runtimeEventLog = null!;
     private DecidingRuntime<BenchDecider, BenchState, BenchCommand, BenchEvent, BenchEffect, BenchError, Unit> _decider = null!;
 
     // ── Safe-no-track runtimes (threadSafe=true, trackEvents=false) ─
@@ -74,6 +75,10 @@ public class PiceaBenchmarks
         var composed = BenchObservers.NoOp.Then(BenchObservers.Touch);
         _runtimeComposed = new AutomatonRuntime<BenchAutomaton, BenchState, BenchEvent, BenchEffect, Unit>(
             initState, composed, BenchInterpreters.NoOp);
+
+        var (eventLogObserver, _) = EventLog.Create<BenchState, BenchEvent, BenchEffect>();
+        _runtimeEventLog = new AutomatonRuntime<BenchAutomaton, BenchState, BenchEvent, BenchEffect, Unit>(
+            initState, eventLogObserver, BenchInterpreters.NoOp);
 
         _decider = DecidingRuntime<BenchDecider, BenchState, BenchCommand, BenchEvent, BenchEffect, BenchError, Unit>
             .Start(default, BenchObservers.NoOp, BenchInterpreters.NoOp)
@@ -148,6 +153,10 @@ public class PiceaBenchmarks
     [Benchmark(Description = "Dispatch with composed observer (Then)")]
     public ValueTask<Result<Unit, PipelineError>> Dispatch_ComposedObserver()
         => _runtimeComposed.Dispatch(_singleEvent);
+
+    [Benchmark(Description = "Dispatch with EventLog observer append")]
+    public ValueTask<Result<Unit, PipelineError>> Dispatch_WithEventLogObserver()
+        => _runtimeEventLog.Dispatch(_singleEvent);
 
     // ── Decider benchmarks ───────────────────────────────────────────
 
