@@ -62,7 +62,7 @@ Unit            ← replaces void in generics
 
 This follows the [Diataxis](https://diataxis.fr/) documentation framework.
 
-## New In Progress (Issue #35)
+## Additional Reading
 
 - [Event Log Observer And Replay Model](concepts/event-log-replay-model.md)
 - [Event Log Save, Load, And Replay (JSONL)](guides/event-log-save-load-replay.md)

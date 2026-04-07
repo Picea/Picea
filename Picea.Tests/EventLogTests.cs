@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace Picea.Tests;
 
 public sealed class EventLogTests
@@ -72,7 +70,7 @@ public sealed class EventLogTests
         log.Append(new DeltaEvent(-1), new DateTimeOffset(2026, 4, 6, 10, 1, 0, TimeSpan.Zero));
         log.Append(new DeltaEvent(5), new DateTimeOffset(2026, 4, 6, 10, 2, 0, TimeSpan.Zero));
 
-        var path = Path.Combine(Path.GetTempPath(), $"picea-event-log-{Guid.NewGuid():N}.jsonl");
+        var path = Path.Join(Path.GetTempPath(), $"picea-event-log-{Guid.NewGuid():N}.jsonl");
 
         try
         {
@@ -104,7 +102,7 @@ public sealed class EventLogTests
         log.Append(new DeltaEvent(-1), new DateTimeOffset(2026, 4, 6, 10, 1, 0, TimeSpan.Zero));
         log.Append(new DeltaEvent(5), new DateTimeOffset(2026, 4, 6, 10, 2, 0, TimeSpan.Zero));
 
-        var path = Path.Combine(Path.GetTempPath(), $"picea-event-log-storage-{Guid.NewGuid():N}.jsonl");
+        var path = Path.Join(Path.GetTempPath(), $"picea-event-log-storage-{Guid.NewGuid():N}.jsonl");
         var storage = EventLogStorage.JsonLinesFile<DeltaEvent>(path, serializer);
 
         try
@@ -161,6 +159,7 @@ public sealed class EventLogTests
                 cancellationToken.ThrowIfCancellationRequested();
                 await foreach (var _ in entries.WithCancellation(cancellationToken))
                 {
+                    // Intentionally drain the stream to exercise cancellation propagation.
                 }
             },
             LoadEntries: static _ => EmptyEntries());

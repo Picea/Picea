@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Runtime.CompilerServices;
+using System.Collections.ObjectModel;
 
 namespace Picea;
 
@@ -164,6 +165,9 @@ public sealed class EventLog<TEvent>
 {
     private readonly Lock _sync = new();
     private readonly List<LogEntry<TEvent>> _entries;
+    private LogEntry<TEvent>[] _entriesSnapshot = Array.Empty<LogEntry<TEvent>>();
+    private IReadOnlyList<LogEntry<TEvent>> _entriesView = Array.Empty<LogEntry<TEvent>>();
+    private bool _snapshotDirty = true;
     private long _nextSequenceNumber;
 
     /// <summary>
@@ -187,7 +191,10 @@ public sealed class EventLog<TEvent>
         get
         {
             lock (_sync)
-                return _entries.Count == 0 ? Array.Empty<LogEntry<TEvent>>() : [.. _entries];
+            {
+                RefreshSnapshotIfDirty();
+                return _entriesView;
+            }
         }
     }
 
@@ -229,6 +236,7 @@ public sealed class EventLog<TEvent>
             var entry = new LogEntry<TEvent>(_nextSequenceNumber, timestamp ?? DateTimeOffset.UtcNow, @event);
             _entries.Add(entry);
             _nextSequenceNumber++;
+            _snapshotDirty = true;
             return entry;
         }
     }
@@ -401,6 +409,8 @@ public sealed class EventLog<TEvent>
             ? 1
             : entries.Max(static entry => entry.SequenceNumber) + 1;
 
+        entries.Sort(static (left, right) => left.SequenceNumber.CompareTo(right.SequenceNumber));
+
         return new EventLog<TEvent>(entries, nextSequence);
     }
 
@@ -408,11 +418,19 @@ public sealed class EventLog<TEvent>
     {
         lock (_sync)
         {
-            if (_entries.Count is 0)
-                return Array.Empty<LogEntry<TEvent>>();
-
-            return [.. _entries.OrderBy(static entry => entry.SequenceNumber)];
+            RefreshSnapshotIfDirty();
+            return _entriesSnapshot;
         }
+    }
+
+    private void RefreshSnapshotIfDirty()
+    {
+        if (!_snapshotDirty)
+            return;
+
+        _entriesSnapshot = _entries.Count is 0 ? Array.Empty<LogEntry<TEvent>>() : [.. _entries];
+        _entriesView = new ReadOnlyCollection<LogEntry<TEvent>>(_entriesSnapshot);
+        _snapshotDirty = false;
     }
 
     private static async IAsyncEnumerable<LogEntry<TEvent>> AsAsyncEnumerable(
