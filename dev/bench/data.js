@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775636121642,
+  "lastUpdate": 1775636137619,
   "repoUrl": "https://github.com/Picea/Picea",
   "entries": {
     "Picea Benchmarks": [
@@ -2892,6 +2892,150 @@ window.BENCHMARK_DATA = {
             "value": 1600.1216216216217,
             "unit": "ns",
             "range": "± 63.2944404050323"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "69cf76070d48688e7a293a2caf45e08ba01ec0b9",
+          "message": "build(deps): bump actions/github-script from 7 to 8 (#33)\n\nBumps [actions/github-script](https://github.com/actions/github-script) from 7 to 8.\n- [Release notes](https://github.com/actions/github-script/releases)\n- [Commits](https://github.com/actions/github-script/compare/v7...v8)\n\n---\nupdated-dependencies:\n- dependency-name: actions/github-script\n  dependency-version: '8'\n  dependency-type: direct:production\n  update-type: version-update:semver-major\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-04-08T10:14:47+02:00",
+          "tree_id": "44df8fa921b81ace3e3fa453de302f64e409838d",
+          "url": "https://github.com/Picea/Picea/commit/69cf76070d48688e7a293a2caf45e08ba01ec0b9"
+        },
+        "date": 1775636137300,
+        "tool": "benchmarkdotnet",
+        "benches": [
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Dispatch_Single",
+            "value": 6751.1875,
+            "unit": "ns",
+            "range": "± 125.14270187802936"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Dispatch_WithObserver",
+            "value": 6183.928571428572,
+            "unit": "ns",
+            "range": "± 571.6376952573853"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Dispatch_Batch_100",
+            "value": 59091.967391304344,
+            "unit": "ns",
+            "range": "± 6347.602647657723"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Dispatch_WithFeedback",
+            "value": 9306.111111111111,
+            "unit": "ns",
+            "range": "± 178.06868763581056"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Dispatch_ComposedObserver",
+            "value": 6368.551020408163,
+            "unit": "ns",
+            "range": "± 434.9699686860483"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Dispatch_WithEventLogObserver",
+            "value": 7116.061224489796,
+            "unit": "ns",
+            "range": "± 631.5384393183281"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Handle_Accept",
+            "value": 7784.666666666667,
+            "unit": "ns",
+            "range": "± 826.0648539050328"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Handle_Reject",
+            "value": 4596.604166666667,
+            "unit": "ns",
+            "range": "± 190.80241976066455"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Safe_NoTrack_Dispatch_Single",
+            "value": 4862.115384615385,
+            "unit": "ns",
+            "range": "± 51.28115063311675"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Safe_NoTrack_Dispatch_WithFeedback",
+            "value": 7058.142857142857,
+            "unit": "ns",
+            "range": "± 88.13351509792675"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Safe_NoTrack_Handle_Accept",
+            "value": 7052.846153846154,
+            "unit": "ns",
+            "range": "± 80.30550640506763"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Safe_NoTrack_Handle_Reject",
+            "value": 3935.7,
+            "unit": "ns",
+            "range": "± 91.0176963707145"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Lean_Dispatch_Single",
+            "value": 4425.064516129032,
+            "unit": "ns",
+            "range": "± 137.29334421446435"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Lean_Dispatch_WithFeedback",
+            "value": 7506.365384615385,
+            "unit": "ns",
+            "range": "± 315.9379455604331"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Lean_Handle_Accept",
+            "value": 6069.683673469388,
+            "unit": "ns",
+            "range": "± 603.994462952342"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Lean_Handle_Reject",
+            "value": 3153.676470588235,
+            "unit": "ns",
+            "range": "± 126.2479632916671"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Rec_Lean_Dispatch_Single",
+            "value": 2284.4285714285716,
+            "unit": "ns",
+            "range": "± 61.46870843284505"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Rec_Lean_Dispatch_WithFeedback",
+            "value": 6311.5,
+            "unit": "ns",
+            "range": "± 108.40859318763931"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Rec_Lean_Handle_Accept",
+            "value": 5180.785714285715,
+            "unit": "ns",
+            "range": "± 77.27093051915902"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Rec_Lean_Handle_Reject",
+            "value": 1781.2666666666667,
+            "unit": "ns",
+            "range": "± 36.39165262738669"
           }
         ]
       }
