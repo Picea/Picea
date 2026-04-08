@@ -203,6 +203,155 @@ public sealed class EventLogTests
         await Assert.That(log[0].Event is CounterEvent.Increment).IsTrue();
     }
 
+    [Test]
+    public async Task HashChain_CreateFactory_ProducesComposableObserverAndTracksCurrentHash()
+    {
+        var (observer, log) = EventLog.CreateHashChain<CounterState, CounterEvent, CounterEffect>();
+        var baselineHash = log.CurrentHash;
+
+        var runtime = new AutomatonRuntime<Counter, CounterState, CounterEvent, CounterEffect, Unit>(
+            new CounterState(0),
+            observer,
+            _ => InterpreterResult<CounterEvent>.Empty);
+
+        _ = await runtime.Dispatch(new CounterEvent.Increment());
+        _ = await runtime.Dispatch(new CounterEvent.Decrement());
+
+        await Assert.That(log.Count).IsEqualTo(2);
+        await Assert.That(log.CurrentHash).IsNotEqualTo(baselineHash);
+        await Assert.That(log.VerifyChain()).IsTrue();
+    }
+
+    [Test]
+    public async Task HashChain_VerifyRangeAndAnchor_WorkForValidLog()
+    {
+        var log = CreateDeltaHashChainLog();
+
+        await Assert.That(log.VerifyChain()).IsTrue();
+        await Assert.That(log.VerifyRange(2, 3)).IsTrue();
+        await Assert.That(log.VerifyAnchor(log.AnchorHash)).IsTrue();
+        await Assert.That(log.VerifyAnchor("not-the-anchor")).IsFalse();
+    }
+
+    [Test]
+    public async Task HashChain_EmptyLog_VerifyAnchorRequiresAnchorMatch()
+    {
+        var (_, log) = EventLog.CreateHashChain<Unit, DeltaEvent, Unit>();
+
+        await Assert.That(log.VerifyChain()).IsTrue();
+        await Assert.That(log.VerifyAnchor(log.AnchorHash)).IsTrue();
+        await Assert.That(log.VerifyAnchor("not-the-anchor")).IsFalse();
+    }
+
+    [Test]
+    public async Task HashChain_VerifyRange_RejectsInvalidBoundsAndMissingSequences()
+    {
+        var log = CreateDeltaHashChainLog();
+
+        await Assert.That(log.VerifyRange(0, 1)).IsFalse();
+        await Assert.That(log.VerifyRange(3, 2)).IsFalse();
+        await Assert.That(log.VerifyRange(1, 99)).IsFalse();
+        await Assert.That(log.VerifyRange(99, 100)).IsFalse();
+    }
+
+    [Test]
+    public async Task HashChain_TamperDetection_ModifiedEntryFailsVerification()
+    {
+        var serializer = new JsonEventSerializer();
+        var source = CreateDeltaHashChainLog(serializer);
+
+        var entries = source.Entries.ToArray();
+        entries[1] = entries[1] with { Event = new DeltaEvent(999) };
+
+        var loaded = await HashChainEventLog<DeltaEvent>.LoadAsync(HashChainStorage(entries), serializer);
+
+        await Assert.That(loaded.VerifyChain()).IsFalse();
+    }
+
+    [Test]
+    public async Task HashChain_TamperDetection_ModifiedEntryFailsRangeAndAnchorVerification()
+    {
+        var serializer = new JsonEventSerializer();
+        var source = CreateDeltaHashChainLog(serializer);
+
+        var entries = source.Entries.ToArray();
+        entries[1] = entries[1] with { Event = new DeltaEvent(999) };
+
+        var loaded = await HashChainEventLog<DeltaEvent>.LoadAsync(HashChainStorage(entries), serializer);
+
+        await Assert.That(loaded.VerifyRange(1, 3)).IsFalse();
+        await Assert.That(loaded.VerifyAnchor(source.AnchorHash)).IsFalse();
+    }
+
+    [Test]
+    public async Task HashChain_TamperDetection_InsertedDeletedAndReorderedEntriesFailVerification()
+    {
+        var serializer = new JsonEventSerializer();
+        var source = CreateDeltaHashChainLog(serializer);
+        var original = source.Entries.ToArray();
+
+        var inserted = new[]
+        {
+            original[0],
+            original[1],
+            original[2],
+            new HashChainLogEntry<DeltaEvent>(99, original[2].Timestamp.AddMinutes(1), new DeltaEvent(7), original[2].Hash, original[2].Hash)
+        };
+
+        var deleted = new[]
+        {
+            original[0],
+            original[2]
+        };
+
+        var reordered = new[]
+        {
+            original[0],
+            original[2],
+            original[1]
+        };
+
+        var insertedLog = await HashChainEventLog<DeltaEvent>.LoadAsync(HashChainStorage(inserted), serializer);
+        var deletedLog = await HashChainEventLog<DeltaEvent>.LoadAsync(HashChainStorage(deleted), serializer);
+        var reorderedLog = await HashChainEventLog<DeltaEvent>.LoadAsync(HashChainStorage(reordered), serializer);
+
+        await Assert.That(insertedLog.VerifyChain()).IsFalse();
+        await Assert.That(deletedLog.VerifyChain()).IsFalse();
+        await Assert.That(reorderedLog.VerifyChain()).IsFalse();
+    }
+
+    [Test]
+    public async Task HashChain_SaveLoad_RoundTripsAndPreservesReplayParity()
+    {
+        var serializer = new JsonEventSerializer();
+        var source = CreateDeltaHashChainLog(serializer);
+        var path = Path.Join(Path.GetTempPath(), $"picea-hash-chain-log-{Guid.NewGuid():N}.jsonl");
+
+        try
+        {
+            await source.SaveAsync(path);
+
+            var loaded = await EventLog.LoadHashChainAsync<DeltaEvent>(path, serializer);
+            var sourceAsEventLog = source.AsEventLog();
+            var loadedAsEventLog = loaded.AsEventLog();
+
+            await Assert.That(loaded.Count).IsEqualTo(source.Count);
+            await Assert.That(loaded.VerifyChain()).IsTrue();
+            await Assert.That(loaded.CurrentHash).IsEqualTo(source.CurrentHash);
+
+            var sourceReplay = sourceAsEventLog.Replay<DeltaAutomaton, int, Unit, Unit>(default);
+            var loadedReplay = loadedAsEventLog.Replay<DeltaAutomaton, int, Unit, Unit>(default);
+
+            await Assert.That(sourceReplay).IsEqualTo(6);
+            await Assert.That(loadedReplay).IsEqualTo(sourceReplay);
+        }
+        finally
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+    }
+
     private static async ValueTask<EventLog<CounterEvent>> CreateCounterEventLog()
     {
         var (observer, log) = EventLog.Create<CounterState, CounterEvent, CounterEffect>();
@@ -217,6 +366,30 @@ public sealed class EventLogTests
         _ = await runtime.Dispatch(new CounterEvent.Decrement());
 
         return log;
+    }
+
+    private static HashChainEventLog<DeltaEvent> CreateDeltaHashChainLog(EventSerializer? serializer = null)
+    {
+        var (_, log) = EventLog.CreateHashChain<Unit, DeltaEvent, Unit>(serializer: serializer);
+
+        log.Append(new DeltaEvent(2), new DateTimeOffset(2026, 4, 6, 10, 0, 0, TimeSpan.Zero));
+        log.Append(new DeltaEvent(-1), new DateTimeOffset(2026, 4, 6, 10, 1, 0, TimeSpan.Zero));
+        log.Append(new DeltaEvent(5), new DateTimeOffset(2026, 4, 6, 10, 2, 0, TimeSpan.Zero));
+
+        return log;
+    }
+
+    private static HashChainLogStorage<DeltaEvent> HashChainStorage(IReadOnlyList<HashChainLogEntry<DeltaEvent>> entries) =>
+        new(
+            SaveEntries: static (_, _) => ValueTask.CompletedTask,
+            LoadEntries: _ => ToAsync(entries));
+
+    private static async IAsyncEnumerable<HashChainLogEntry<DeltaEvent>> ToAsync(IReadOnlyList<HashChainLogEntry<DeltaEvent>> entries)
+    {
+        await ValueTask.CompletedTask;
+
+        for (var i = 0; i < entries.Count; i++)
+            yield return entries[i];
     }
 
     public readonly record struct DeltaEvent(int Delta);

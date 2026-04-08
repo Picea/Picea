@@ -22,6 +22,13 @@ Keep this distinction clear:
 
 The default storage adapter is JSONL via `EventLogStorage.JsonLinesFile<TEvent>(...)`.
 
+## Plain Replay vs Tamper-Evidence Mode
+
+Use plain mode when you only need deterministic replay. Use hash-chain mode when you also need tamper-evidence checks.
+
+- Plain mode APIs: `EventLog.Create(...)`, `EventLog.LoadAsync(...)`, `EventLog<TEvent>.Replay(...)`
+- Tamper-evidence APIs: `EventLog.CreateHashChain(...)`, `EventLog.LoadHashChainAsync(...)`, `HashChainEventLog<TEvent>.VerifyChain()`
+
 ## 1. Create Observer + Event Log
 
 ```csharp
@@ -124,6 +131,74 @@ static async IAsyncEnumerable<LogEntry<CounterEvent>> LoadFromMemory(
 ```
 
 Cloud-style capability follows the same shape: `SaveEntries` writes each `LogEntry<TEvent>` to your service, `LoadEntries` streams entries back for replay.
+
+## 6. Hash-Chain Tamper-Evidence Workflow
+
+The hash-chain workflow keeps replay semantics and adds explicit integrity checks.
+
+### Create Hash-Chain Observer + Log
+
+```csharp
+var serializer = new JsonEventSerializer();
+var hashing = HashChainOptions.Sha256(anchorHash: "audit-anchor-v1");
+
+var (hashObserver, hashLog) = EventLog.CreateHashChain<CounterState, CounterEvent, CounterEffect>(
+    serializer,
+    hashing);
+
+var observer = hashObserver.Then(metricsObserver).Then(renderObserver);
+```
+
+### Save And Load Hash-Chain Log
+
+```csharp
+await hashLog.SaveAsync("session.hash.jsonl");
+
+var loadedHashLog = await EventLog.LoadHashChainAsync<CounterEvent>(
+    "session.hash.jsonl",
+    serializer,
+    hashing);
+```
+
+Equivalent explicit storage-capability form:
+
+```csharp
+var storage = HashChainLogStorage.JsonLinesFile<CounterEvent>("session.hash.jsonl", serializer);
+
+await hashLog.SaveAsync(storage);
+var loadedHashLog = await HashChainEventLog<CounterEvent>.LoadAsync(storage, serializer, hashing);
+```
+
+### Verify Before Replay
+
+```csharp
+if (!loadedHashLog.VerifyChain())
+{
+    throw new InvalidDataException("Hash-chain verification failed.");
+}
+
+var anchorMatches = loadedHashLog.VerifyAnchor(hashing.AnchorHash);
+var rangeMatches = loadedHashLog.Count is 0
+    ? anchorMatches
+    : loadedHashLog.VerifyRange(1, loadedHashLog.Entries[^1].SequenceNumber);
+
+var replayLog = loadedHashLog.AsEventLog();
+var finalState = replayLog.Replay<Counter, CounterState, CounterEffect, Unit>(default);
+```
+
+### Anchor Recommendation
+
+`CurrentHash` is the chain head hash. Record it outside the primary system boundary on a schedule (or at key checkpoints) so later verification can compare against a trusted external value.
+
+Without external anchoring, hash-chain verification still provides internal consistency checks, but trust does not extend beyond the same storage boundary.
+
+### Non-Goals
+
+Hash-chaining provides tamper-evidence. It does not provide:
+
+- Encryption
+- Digital signatures and signer identity
+- Distributed consensus
 
 ## JSONL Shape
 

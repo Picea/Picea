@@ -10,7 +10,7 @@ Practical recipes for common tasks. Each guide solves a specific problem.
 | ----- | -------------- |
 | [Building Custom Runtimes](building-custom-runtimes.md) | How to wire your own Observer + Interpreter |
 | [Error Handling Patterns](error-handling-patterns.md) | Map, Bind, MapError pipelines with Result |
-| [Event Log Save, Load, And Replay (JSONL)](event-log-save-load-replay.md) | Deterministic session replay workflow with JSON Lines |
+| [Event Log Save, Load, And Replay (JSONL)](event-log-save-load-replay.md) | Deterministic replay and hash-chain tamper-evidence workflow |
 | [Observer Composition](observer-composition.md) | Then, Where, Catch, Combine recipes |
 | [Testing Strategies](testing-strategies.md) | Testing at every level: pure functions, runtime, integration |
 | [Upgrading to Decider](upgrading-to-decider.md) | Adding command validation to an existing Automaton |
