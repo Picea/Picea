@@ -56,6 +56,55 @@ See the practical guide: [Event Log Save, Load, And Replay (JSONL)](../guides/ev
 
 Core replay semantics are independent from any specific persistence technology.
 
+## Integrity Layer: Hash-Chained Event Logs
+
+For tamper-evidence, Picea provides a separate hash-chain mode via `HashChainEventLog<TEvent>` and `EventLog.CreateHashChain<TState, TEvent, TEffect>(...)`.
+
+Keep the boundary explicit:
+
+- Plain replay mode: `EventLog<TEvent>` for deterministic append/replay workflows.
+- Tamper-evidence mode: `HashChainEventLog<TEvent>` for append/replay plus hash-link verification.
+
+In hash-chain mode, each entry stores:
+
+- `PreviousHash` (link to prior entry, or anchor for the first entry)
+- `Hash` (hash over sequence number, timestamp, previous hash, and serialized event payload)
+
+Verification APIs:
+
+- `VerifyChain()` checks the full chain.
+- `VerifyRange(fromSequenceNumber, toSequenceNumber)` checks an inclusive segment.
+- `VerifyAnchor(expectedAnchorHash)` checks chain validity against an expected anchor.
+
+Practical notes:
+
+- `CurrentHash` exposes the current head hash for out-of-band recording.
+- `AsEventLog()` converts a verified hash-chained log into `EventLog<TEvent>` for standard replay APIs.
+
+## Non-Goals And Guarantee Boundaries
+
+Hash chaining in Picea is tamper-evidence, not a complete trust system.
+
+Non-goals:
+
+- It is not encryption.
+- It is not digital signing or identity attestation.
+- It is not distributed consensus.
+
+What it does provide:
+
+- Detection of common log mutation classes (insert/delete/reorder/edit) when the verifier has a trusted anchor or trusted head hash.
+
+What it does not provide by itself:
+
+- Who performed a change.
+- Confidentiality of event payloads.
+- Byzantine fault tolerance.
+
+Recommendation:
+
+- Anchor periodically by storing `CurrentHash` in a separate trust domain (for example: append-only audit store, external timestamp/signing service, or independent operational system). Without anchoring, verification still checks internal consistency, but trust remains local to the same system boundary.
+
 ## Storage Abstraction
 
 Persistence is modeled as a capability, not built into replay itself:

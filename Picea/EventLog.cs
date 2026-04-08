@@ -143,6 +143,22 @@ public static class EventLog
         EventLog<TEvent>.Create<TState, TEffect>(timestampFactory);
 
     /// <summary>
+    /// Creates an append-only hash-chained event log together with a composable observer.
+    /// </summary>
+    /// <typeparam name="TState">The runtime state type.</typeparam>
+    /// <typeparam name="TEvent">The runtime event type.</typeparam>
+    /// <typeparam name="TEffect">The runtime effect type.</typeparam>
+    /// <param name="serializer">Optional serializer used for hash payload generation and persistence.</param>
+    /// <param name="hashing">Optional hashing configuration. SHA-256 is used by default.</param>
+    /// <param name="timestampFactory">Optional timestamp factory used for each append.</param>
+    /// <returns>A tuple containing the observer and its backing hash-chained event log.</returns>
+    public static (Observer<TState, TEvent, TEffect> Observer, HashChainEventLog<TEvent> Log) CreateHashChain<TState, TEvent, TEffect>(
+        EventSerializer? serializer = null,
+        HashChainOptions? hashing = null,
+        Func<DateTimeOffset>? timestampFactory = null) =>
+        HashChainEventLog<TEvent>.Create<TState, TEffect>(serializer, hashing, timestampFactory);
+
+    /// <summary>
     /// Loads an event log from a JSON Lines file.
     /// </summary>
     /// <typeparam name="TEvent">The event type.</typeparam>
@@ -155,6 +171,22 @@ public static class EventLog
         EventSerializer serializer,
         CancellationToken cancellationToken = default) =>
         EventLog<TEvent>.LoadAsync(path, serializer, cancellationToken);
+
+    /// <summary>
+    /// Loads a hash-chained event log from a JSON Lines file.
+    /// </summary>
+    /// <typeparam name="TEvent">The event type.</typeparam>
+    /// <param name="path">The path to the JSONL file.</param>
+    /// <param name="serializer">The serializer capability.</param>
+    /// <param name="hashing">Optional hashing configuration. SHA-256 is used by default.</param>
+    /// <param name="cancellationToken">Cancellation token for asynchronous loading.</param>
+    /// <returns>The loaded hash-chained event log.</returns>
+    public static ValueTask<HashChainEventLog<TEvent>> LoadHashChainAsync<TEvent>(
+        string path,
+        EventSerializer serializer,
+        HashChainOptions? hashing = null,
+        CancellationToken cancellationToken = default) =>
+        HashChainEventLog<TEvent>.LoadAsync(path, serializer, hashing, cancellationToken);
 }
 
 /// <summary>
@@ -412,6 +444,23 @@ public sealed class EventLog<TEvent>
         entries.Sort(static (left, right) => left.SequenceNumber.CompareTo(right.SequenceNumber));
 
         return new EventLog<TEvent>(entries, nextSequence);
+    }
+
+    internal static EventLog<TEvent> FromEntries(IReadOnlyList<LogEntry<TEvent>> orderedEntries)
+    {
+        var entries = orderedEntries.Count is 0 ? [] : new List<LogEntry<TEvent>>(orderedEntries.Count);
+        var nextSequenceNumber = 1L;
+
+        for (var i = 0; i < orderedEntries.Count; i++)
+        {
+            var entry = orderedEntries[i];
+            entries.Add(entry);
+
+            if (entry.SequenceNumber >= nextSequenceNumber)
+                nextSequenceNumber = entry.SequenceNumber + 1;
+        }
+
+        return new EventLog<TEvent>(entries, nextSequenceNumber);
     }
 
     private LogEntry<TEvent>[] SnapshotOrderedBySequence()

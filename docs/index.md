@@ -64,5 +64,5 @@ This follows the [Diataxis](https://diataxis.fr/) documentation framework.
 
 ## Additional Reading
 
-- [Event Log Observer And Replay Model](concepts/event-log-replay-model.md)
-- [Event Log Save, Load, And Replay (JSONL)](guides/event-log-save-load-replay.md)
+- [Event Log Observer And Replay Model](concepts/event-log-replay-model.md) (plain replay semantics and hash-chain integrity boundaries)
+- [Event Log Save, Load, And Replay (JSONL)](guides/event-log-save-load-replay.md) (plain mode and tamper-evidence usage examples)
