@@ -311,13 +311,14 @@ public sealed class EventLogTests
             original[1]
         };
 
-        var insertedLog = await HashChainEventLog<DeltaEvent>.LoadAsync(HashChainStorage(inserted), serializer);
-        var deletedLog = await HashChainEventLog<DeltaEvent>.LoadAsync(HashChainStorage(deleted), serializer);
-        var reorderedLog = await HashChainEventLog<DeltaEvent>.LoadAsync(HashChainStorage(reordered), serializer);
+        await Assert.That(() => HashChainEventLog<DeltaEvent>.LoadAsync(HashChainStorage(inserted), serializer).AsTask())
+            .ThrowsExactly<InvalidDataException>();
 
-        await Assert.That(insertedLog.VerifyChain()).IsFalse();
-        await Assert.That(deletedLog.VerifyChain()).IsFalse();
-        await Assert.That(reorderedLog.VerifyChain()).IsFalse();
+        await Assert.That(() => HashChainEventLog<DeltaEvent>.LoadAsync(HashChainStorage(deleted), serializer).AsTask())
+            .ThrowsExactly<InvalidDataException>();
+
+        await Assert.That(() => HashChainEventLog<DeltaEvent>.LoadAsync(HashChainStorage(reordered), serializer).AsTask())
+            .ThrowsExactly<InvalidDataException>();
     }
 
     [Test]

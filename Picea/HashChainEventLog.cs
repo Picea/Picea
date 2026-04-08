@@ -119,6 +119,10 @@ public static class HashChainLogStorage
 /// Append-only hash-chained event log with replay, verification, and persistence APIs.
 /// </summary>
 /// <typeparam name="TEvent">The event type captured by the log.</typeparam>
+/// <remarks>
+/// Hash-chain verification assumes deterministic event serialization for hashing.
+/// Use a stable serializer configuration for the lifetime of a hash-chained log.
+/// </remarks>
 public sealed class HashChainEventLog<TEvent>
 {
     private readonly Lock _sync = new();
@@ -269,6 +273,10 @@ public sealed class HashChainEventLog<TEvent>
     /// <summary>
     /// Converts this hash-chained log into a standard event log snapshot.
     /// </summary>
+    /// <remarks>
+    /// Call <see cref="VerifyChain"/> or <see cref="VerifyAnchor"/> before replaying when
+    /// tamper-evidence is required. This method does not perform verification implicitly.
+    /// </remarks>
     /// <returns>A snapshot-compatible event log.</returns>
     public EventLog<TEvent> AsEventLog()
     {
@@ -383,6 +391,7 @@ public sealed class HashChainEventLog<TEvent>
 
         var entries = new List<HashChainLogEntry<TEvent>>();
         var sequenceNumbers = new HashSet<long>();
+        long previousSequenceNumber = 0;
 
         await foreach (var entry in storage.LoadEntries(cancellationToken).WithCancellation(cancellationToken).ConfigureAwait(false))
         {
@@ -393,6 +402,19 @@ public sealed class HashChainEventLog<TEvent>
 
             if (!sequenceNumbers.Add(entry.SequenceNumber))
                 throw new InvalidDataException($"Duplicate sequence number '{entry.SequenceNumber}' detected while loading the hash-chained event log.");
+
+            if (previousSequenceNumber is 0)
+            {
+                if (entry.SequenceNumber is not 1)
+                    throw new InvalidDataException("Invalid first sequence number. Hash-chained logs must start at sequence number 1.");
+            }
+            else if (entry.SequenceNumber != previousSequenceNumber + 1)
+            {
+                throw new InvalidDataException(
+                    $"Non-contiguous sequence number '{entry.SequenceNumber}' detected after '{previousSequenceNumber}' while loading the hash-chained event log.");
+            }
+
+            previousSequenceNumber = entry.SequenceNumber;
 
             entries.Add(entry);
         }
@@ -481,6 +503,7 @@ public sealed class HashChainEventLog<TEvent>
 
     private string ComputeHash(LogEntry<TEvent> entry, string previousHash)
     {
+        // The hash payload must be serialized deterministically for stable verification.
         var eventPayload = _serializer.Serialize(entry.Event);
         var payload = string.Create(
             CultureInfo.InvariantCulture,

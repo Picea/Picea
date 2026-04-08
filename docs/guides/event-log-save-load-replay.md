@@ -169,6 +169,14 @@ await hashLog.SaveAsync(storage);
 var loadedHashLog = await HashChainEventLog<CounterEvent>.LoadAsync(storage, serializer, hashing);
 ```
 
+### Hash-Chain JSONL Shape
+
+Hash-chain storage includes integrity metadata per line (`previousHash` and `hash`):
+
+```json
+{"sequenceNumber":1,"timestamp":"2026-04-06T12:34:56.0000000+00:00","event":{"kind":"Increment"},"previousHash":"","hash":"7EA7D5A9C8..."}
+```
+
 ### Verify Before Replay
 
 ```csharp
@@ -202,7 +210,7 @@ Hash-chaining provides tamper-evidence. It does not provide:
 
 ## JSONL Shape
 
-Default JSONL storage writes one entry per line:
+Default plain `EventLog<TEvent>` JSONL storage writes one entry per line:
 
 ```json
 {"sequenceNumber":1,"timestamp":"2026-04-06T12:34:56.0000000+00:00","event":{"kind":"Increment"}}
