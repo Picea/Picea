@@ -200,23 +200,23 @@ public sealed class GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TVal
         {
             var waitTask = _core.Gate.WaitAsync(cancellationToken);
             if (waitTask.IsCompletedSuccessfully)
-                return HandleAfterGate(principal, command, cancellationToken, activity);
+                return HandleAfterGate(principal, command, activity, cancellationToken);
 
-            return AwaitGateThenHandle(waitTask, principal, command, cancellationToken, activity);
+            return AwaitGateThenHandle(waitTask, principal, command, activity, cancellationToken);
         }
 
-        return HandleUnserialized(principal, command, cancellationToken, activity);
+        return HandleUnserialized(principal, command, activity, cancellationToken);
     }
 
     private ValueTask<Result<TState, TError>> HandleUnserialized(
         TPrincipal principal,
         TCommand command,
-        CancellationToken cancellationToken,
-        Activity? activity)
+        Activity? activity,
+        CancellationToken cancellationToken)
     {
         try
         {
-            var task = HandleCore(principal, command, cancellationToken, activity);
+            var task = HandleCore(principal, command, activity, cancellationToken);
             if (task.IsCompletedSuccessfully)
             {
                 activity?.Dispose();
@@ -253,12 +253,12 @@ public sealed class GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TVal
     private ValueTask<Result<TState, TError>> HandleAfterGate(
         TPrincipal principal,
         TCommand command,
-        CancellationToken cancellationToken,
-        Activity? activity)
+        Activity? activity,
+        CancellationToken cancellationToken)
     {
         try
         {
-            var task = HandleCore(principal, command, cancellationToken, activity);
+            var task = HandleCore(principal, command, activity, cancellationToken);
             if (task.IsCompletedSuccessfully)
             {
                 activity?.Dispose();
@@ -303,14 +303,14 @@ public sealed class GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TVal
         Task waitTask,
         TPrincipal principal,
         TCommand command,
-        CancellationToken cancellationToken,
-        Activity? activity)
+        Activity? activity,
+        CancellationToken cancellationToken)
     {
         using var _ = activity;
         await waitTask.ConfigureAwait(false);
         try
         {
-            return await HandleCore(principal, command, cancellationToken, activity).ConfigureAwait(false);
+            return await HandleCore(principal, command, activity, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -326,8 +326,8 @@ public sealed class GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TVal
     private async ValueTask<Result<TState, TError>> HandleCore(
         TPrincipal principal,
         TCommand command,
-        CancellationToken cancellationToken,
-        Activity? activity)
+        Activity? activity,
+        CancellationToken cancellationToken)
     {
         var state = _core.State;
 
@@ -358,7 +358,7 @@ public sealed class GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TVal
         var events = ContractGuards.RequireNonNullArray(TGuardedDecider.Decide(state, validatedCommand));
         for (var i = 0; i < events.Length; i++)
         {
-            var dispatchResult = await _core.DispatchUnlocked(events[i], cancellationToken).ConfigureAwait(false);
+            var dispatchResult = await _core.DispatchUnlocked(events[i], 0, cancellationToken).ConfigureAwait(false);
             if (dispatchResult.IsErr)
             {
                 dispatchResult.TryGetError(out var dispatchError);

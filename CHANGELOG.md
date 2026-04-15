@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 via [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning).
 
+## [2.0.0] — Unreleased
+
+### **BREAKING** Changed
+
+- **AutomatonRuntime constructor is now `internal`**: The public constructor of `AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParameters>` is no longer accessible to user code. Users **must** use the static factory method `AutomatonRuntime<...>.Start()` to create and initialize runtimes. This change prevents half-initialized state and enforces proper initialization semantics. Test code and framework extensions (same assembly) retain access via internal visibility. See [migration guide](#migration-automaton-runtime-initialization) below.
+
+- **Internal method parameter ordering**: Reordered internal method signatures to place `CancellationToken` as the final parameter, aligning with .NET Framework Design Guidelines. This affects only internal APIs and is NOT a breaking change for public consumers.
+
+#### Migration Guide
+
+**Before 2.0.0** (calling constructor directly):
+```csharp
+var runtime = new AutomatonRuntime<MyAutomaton, MyState, MyEvent, MyEffect, MyParams>(
+    initialState: myState,
+    observer: myObserver,
+    interpreter: myInterpreter);
+```
+
+**After 2.0.0** (use `.Start()` factory):
+```csharp
+var runtime = await AutomatonRuntime<MyAutomaton, MyState, MyEvent, MyEffect, MyParams>
+    .Start(
+        parameters: myParams,        // Passes through AutomatonInitialize
+        observer: myObserver,
+        interpreter: myInterpreter);
+```
+
+**Why this change?** The `Start()` factory enforces initialization consistency: it calls `TAutomaton.Initialize(parameters)` automatically and interprets startup effects. This eliminates a class of bugs where manually constructed runtimes skipped initialization or startup effect handling.
+
+### Why AutomatonRuntime.Start is now required
+
+The change encodes an invariant: **runtimes are either initialized through `.Start()` or they come from test code.** Public users have no reason to bypass the factory — it does all the work correctly.
+
+---
+
 ## [1.0.0-rc.4] — 2026-04-05
 
 ### Changed

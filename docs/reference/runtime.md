@@ -97,6 +97,8 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     where TAutomaton : Automaton<TState, TEvent, TEffect, TParameters>
 ```
 
+> ⚠️ **Constructor is `internal`** — Use [`Start`](#start) to create a runtime. The factory ensures proper initialization.
+
 ### Properties
 
 | Property | Type | Description |
@@ -116,7 +118,14 @@ public static async ValueTask<AutomatonRuntime<TAutomaton, TState, TEvent, TEffe
     CancellationToken cancellationToken = default)
 ```
 
-Creates and starts a runtime, interpreting initial effects immediately.
+The **only public way** to create a runtime. This factory:
+
+1. Calls `TAutomaton.Initialize(parameters)` to obtain initial state and effect
+2. Constructs the runtime with the initialized state
+3. Interprets the startup effect through the interpreter pipeline
+4. Returns a fully initialized, ready-to-dispatch runtime
+
+**Always use `Start` for production code.** Only test/internal code may construct directly.
 
 ### Dispatch
 

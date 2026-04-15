@@ -87,7 +87,20 @@ var runtime = await AutomatonRuntime<Order, OrderState, OrderEvent, OrderEffect,
 
 ## Controlling Initialization
 
-The `Start` method calls `Initialize` and interprets the initial effect. If you need more control:
+The `Start` method calls `Initialize` and interprets the initial effect automatically. For most cases, this is the correct pattern:
+
+```csharp
+// Recommended: Use Start() for standard initialization
+var runtime = await AutomatonRuntime<MyAutomaton, MyState, MyEvent, MyEffect, MyParams>
+    .Start(
+        parameters,
+        observer,
+        interpreter);
+```
+
+### Advanced: Custom Initialization Flow (Test Code Only)
+
+If you need precise control over initialization order (e.g., rendering before effects), this pattern is restricted to **test code within the same assembly**:
 
 ```csharp
 // Step 1: Initialize manually
@@ -96,13 +109,15 @@ var (initialState, initialEffect) = MyAutomaton.Initialize(parameters);
 // Step 2: Render initial view BEFORE interpreting effects
 RenderView(initialState);
 
-// Step 3: Create runtime with pre-initialized state
+// Step 3: Create runtime with pre-initialized state (internal constructor)
 var runtime = new AutomatonRuntime<MyAutomaton, MyState, MyEvent, MyEffect, MyParams>(
     initialState, observer, interpreter);
 
 // Step 4: Interpret initial effect manually
 await runtime.InterpretEffect(initialEffect);
 ```
+
+> The direct constructor is `internal` to ensure production code always uses the safe `Start()` factory. Test assemblies can access it — public user code cannot.
 
 ## Hydration (Event Replay)
 

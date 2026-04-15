@@ -135,11 +135,11 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
             return AwaitGateThenHandle(waitTask, command, activity, cancellationToken);
         }
 
-        return HandleUnserialized(command, cancellationToken, activity);
+        return HandleUnserialized(command, activity, cancellationToken);
     }
 
     private ValueTask<Result<TState, TError>> HandleUnserialized(
-        TCommand command, CancellationToken cancellationToken, Activity? activity)
+        TCommand command, Activity? activity, CancellationToken cancellationToken)
     {
         try
         {
@@ -149,8 +149,8 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
                 decided.TryGetValue(out var decidedEvents);
                 return DispatchEventsAndReturnOkUnserialized(
                     ContractGuards.RequireNonNullArray(decidedEvents),
-                    cancellationToken,
-                    activity);
+                    activity,
+                    cancellationToken);
             }
             else
             {
@@ -178,14 +178,14 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
 
     private ValueTask<Result<TState, TError>> DispatchEventsAndReturnOkUnserialized(
         TEvent[] events,
-        CancellationToken cancellationToken,
-        Activity? activity)
+        Activity? activity,
+        CancellationToken cancellationToken)
     {
         try
         {
             for (var i = 0; i < events.Length; i++)
             {
-                var dispatchTask = _core.DispatchUnlocked(events[i], cancellationToken);
+                var dispatchTask = _core.DispatchUnlocked(events[i], 0, cancellationToken);
                 if (!dispatchTask.IsCompletedSuccessfully)
                     return AwaitRemainingEventsAndReturnOkUnserialized(dispatchTask, events, i + 1, activity, cancellationToken);
 
@@ -234,7 +234,7 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
 
             for (var i = startIndex; i < events.Length; i++)
             {
-                var result = await _core.DispatchUnlocked(events[i], cancellationToken).ConfigureAwait(false);
+                var result = await _core.DispatchUnlocked(events[i], 0, cancellationToken).ConfigureAwait(false);
                 if (result.IsErr)
                 {
                     result.TryGetError(out var dispatchError);
@@ -300,7 +300,7 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
     {
         for (var i = 0; i < events.Length; i++)
         {
-            var dispatchTask = _core.DispatchUnlocked(events[i], cancellationToken);
+            var dispatchTask = _core.DispatchUnlocked(events[i], 0, cancellationToken);
             if (!dispatchTask.IsCompletedSuccessfully)
                 return AwaitRemainingEventsAndReturnOk(dispatchTask, events, i + 1, activity, cancellationToken);
 
@@ -342,7 +342,7 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
 
             for (var i = startIndex; i < events.Length; i++)
             {
-                var result = await _core.DispatchUnlocked(events[i], cancellationToken).ConfigureAwait(false);
+                var result = await _core.DispatchUnlocked(events[i], 0, cancellationToken).ConfigureAwait(false);
                 if (result.IsErr)
                 {
                     result.TryGetError(out var dispatchError);
@@ -382,7 +382,7 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
                 var events = ContractGuards.RequireNonNullArray(decidedEvents);
                 foreach (var t in events)
                 {
-                    var result = await _core.DispatchUnlocked(t, cancellationToken).ConfigureAwait(false);
+                    var result = await _core.DispatchUnlocked(t, 0, cancellationToken).ConfigureAwait(false);
                     if (result.IsErr)
                     {
                         result.TryGetError(out var dispatchError);
