@@ -34,7 +34,7 @@ public interface Automaton<TState, TEvent, TEffect, TParameters>
 
 Key design choices:
 
-1. **Static abstract members** — The implementing class holds no instance state. All state flows through `TState`. This enforces the Mealy machine constraint: the transition function depends only on its inputs.
+1. **Static abstract members** — The implementing type holds no instance state. All state flows through `TState`. This enforces the Mealy machine constraint: the transition function depends only on its inputs.
 
 2. **Effects as output** — Unlike a Moore machine (where output depends only on state), the Mealy machine produces effects that depend on both state and event. This is essential for patterns like MVU where the view depends on the full transition context.
 
@@ -52,7 +52,7 @@ Key design choices:
 
 ### Negative
 - **Static abstract members** require .NET 7+ (we target .NET 10.0)
-- **Class-only implementation** — Interfaces with static abstract members cannot be implemented by structs
+- **Implementer choice** — Structs are supported, but prefer simple stateless implementers by default; use structs only when profiling demonstrates a clear benefit
 - **Single effect per transition** — Each transition produces exactly one effect. Composite effects must be modeled as a single effect type (e.g., `BatchEffect`)
 
 ## Alternatives Considered

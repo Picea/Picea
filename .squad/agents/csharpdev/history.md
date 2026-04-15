@@ -1,255 +1,56 @@
-📌 Onboarded for **Picea Core** on 2026-03-30. Squad imported from Picea.Abies project; context refreshed.
-
 # Senior C# Developer — History
 
 ## About This File
-Implementation patterns, domain logic approaches, and C# language learnings. Fenster owns the functional core.
+Project-specific learnings from C#/.NET functional domain modeling work. Read this before every session.
 
-## Picea Implementation Patterns
+## Platform
+- **.NET 10** (LTS), C# 14
+- **TUnit** for all testing
+- **Picea.Abies** namespace root
 
-### The Automaton Interface
+## Functional Patterns Established
+*None yet — Result/Option usage, workflow signatures, capability patterns tracked here.*
 
-Always implement as pure, stateless functions:
+## Constrained Types Created
+| Type | Invariants | Module |
+|---|---|---|
+| *None yet* | | |
 
-```csharp
-public class Counter : Automaton<CounterState, CounterEvent, CounterEffect, Unit>
-{
-    public static (CounterState, CounterEffect) Initialize(Unit _) =>
-        (new CounterState(0), new CounterEffect.None());
+## Bounded Contexts
+*None yet — context boundaries and their relationships tracked here.*
 
-    public static (CounterState, CounterEffect) Transition(CounterState state, CounterEvent @event) =>
-        @event switch
-        {
-            CounterEvent.Increment => 
-                (state with { Count = state.Count + 1 }, new CounterEffect.DisplayCount()),
-            CounterEvent.Decrement => 
-                (state with { Count = state.Count - 1 }, new CounterEffect.DisplayCount()),
-            _ => throw new UnreachableException()
-        };
-}
-```
+## NuGet Packages Added
+| Package | Why | Version | Date |
+|---|---|---|---|
+| *None yet* | | | |
 
-**Key properties:**
-- All methods are `static` — no instance state ever
-- Use `state with { ... }` for immutable updates (records)
-- Returns tuple `(newState, effect)` — both changes together
-- Exhaustive `switch` — compile-time guarantee all cases handled
-- Result is deterministic: same inputs = same outputs always
+## Performance Observations
+*None yet — benchmark results and allocation profiles tracked here.*
 
-### Smart Constructors (Constrained Types)
+## EF Core Patterns & Gotchas
+*None yet.*
 
-Guard domain invariants at the type level:
+## Domain Modeling Decisions
+*None yet — aggregate boundaries, event designs, ACL patterns tracked here.*
 
-```csharp
-public readonly record struct EmailAddress
-{
-    private const int MaxLength = 255;
+## Conventions
+*None yet — propose team-wide conventions via `.squad/decisions/inbox/`.*
 
-    private readonly string? _value;
-
-    private EmailAddress(string value) => _value = value;
-
-    public string Value => _value ?? string.Empty;
-
-    public static Result<EmailAddress, EmailError> Create(string input)
-    {
-        if (string.IsNullOrWhiteSpace(input))
-            return Result.Error(EmailError.Empty);
-        if (input.Length > MaxLength)
-            return Result.Error(EmailError.TooLong);
-        if (!input.Contains("@"))
-            return Result.Error(EmailError.InvalidFormat);
-        return new EmailAddress(input);
-    }
-}
-```
-
-**When to use:**
-- Domain primitives that need validation (Email, Username, Slug, ID types)
-- Constraints that are fundamental to the domain (max length, format, minimum value)
-- Any time an `input`→`output` check is a business rule, not just data validation
-
-### Railway-Oriented Programming (ROP)
-
-Link operations that can fail using `Result<T, TError>`:
-
-```csharp
-public static Result<Order, OrderError> CreateOrder(CreateOrderCommand cmd, InventoryService inventory) =>
-    ValidateOrderItems(cmd.Items)
-        .Bind(validItems => CheckInventory(inventory, validItems))
-        .Bind(inventoryStatus => CalculatePrice(cmd, inventoryStatus))
-        .Map(price => new Order(cmd.CustomerId, cmd.Items, price));
-```
-
-**Benefits:**
-- Short-circuit on first error — no nested if/else pyramids
-- Explicit error flow — caller sees all possible errors
-- Composable — chain operations naturally
-- Testable — mock effects at boundaries
-
-### Workflow Structure (Decider Pattern)
-
-A command-driven workflow is always:
-
-```csharp
-public interface ThermostatCommand
-{
-    record struct SetTarget(decimal Temperature) : ThermostatCommand;
-    record struct RecordReading(decimal CurrentTemp) : ThermostatCommand;
-}
-
-public interface ThermostatEvent
-{
-    record struct TargetSet(decimal Temperature) : ThermostatEvent;
-    record struct TemperatureRecorded(decimal CurrentTemp) : ThermostatEvent;
-}
-
-public interface ThermostatError
-{
-    record struct OutOfRange(decimal Temperature) : ThermostatError;
-}
-
-public static class ThermostatDecider
-{
-    public static Result<ThermostatCommand, ThermostatError> Validate(
-        ThermostatState state, 
-        ThermostatCommand cmd) =>
-        cmd switch
-        {
-            SetTarget({ Temperature: >= 5 and <= 35 }) => Result.Ok(cmd),
-            SetTarget => Result.Error(new ThermostatError.OutOfRange(...)),
-            _ => Result.Ok(cmd)
-        };
-
-    public static Result<ThermostatEvent, ThermostatError> Decide(
-        ThermostatState state,
-        ThermostatCommand cmd) =>
-        cmd switch
-        {
-            SetTarget setCmd => Result.Ok<ThermostatEvent>(
-                new TargetSet(setCmd.Temperature)),
-            RecordReading readCmd => Result.Ok<ThermostatEvent>(
-                new TemperatureRecorded(readCmd.CurrentTemp)),
-            _ => Result.Error(...)
-        };
-}
-```
-
-### Option<T> for Optionals
-
-Never use `null`. Use `Option<T>`:
-
-```csharp
-public readonly record struct Option<T>
-{
-    private readonly T? _value;
-    private readonly bool _hasValue;
-
-    // ... factory methods
-    public static Option<T> Some(T value) => new(value, true);
-    public static Option<T> None() => default;
-
-    public Result<TSuccess> Match<TSuccess>(
-        Func<T, TSuccess> onSome,
-        Func<TSuccess> onNone) =>
-        _hasValue ? onSome(_value!) : onNone();
-}
-```
-
-Use in domain code:
-```csharp
-public record Order(Guid Id, List<Item> Items, Option<DiscountCode> AppliedDiscount);
-```
-
-### Result<T, TError> for Expected Failures
-
-Always return errors as values:
-
-```csharp
-public static Result<Order, OrderError> ValidateOrder(Order order) =>
-    order.Items.Count == 0
-        ? Result.Error<Order>(new OrderError.NoItems())
-        : order.TotalPrice < 0
-        ? Result.Error<Order>(new OrderError.NegativePrice())
-        : Result.Ok(order);
-```
-
-**Never throw exceptions for expected domain errors.** Exceptions are for programmer bugs and unrecoverable infrastructure failures.
-
-### Null Annotations
-
-Declare non-nullable by default:
-
-```csharp
-// ✅ Non-nullable by default
-public string Name { get; } = "Default";
-
-// ✅ Nullable when needed
-public string? Description { get; } = null;
-
-// ✅ Check at entry points
-public void Process(string? input)
-{
-    if (input is null) return; // guard
-    Use(input); // now non-null
-}
-```
-
-## Performance Patterns
-
-### Hot Path Optimization (Kernel Transition)
-
-The `Transition(state, @event)` method is called millions of times. Measure with BenchmarkDotNet:
-
-```csharp
-[Benchmark]
-public (CounterState, CounterEffect) TransitionBenchmark()
-{
-    return Counter.Transition(new CounterState(42), new CounterEvent.Increment());
-}
-```
-
-Keep the transition function allocation-free if possible. Allocations in cold paths (initialization, logging) are fine.
-
-### Comment Hot Path Decisions
-
-```csharp
-// PERF: Avoid allocation by pattern matching on struct discriminant
-// instead of calling GetType(). Measured 10% throughput improvement.
-public static (TState State, TEffect Effect) Transition(TState state, TEvent @event) =>
-    @event switch { ... };
-```
-
-## Integration with TUnit Tests
-
-TUnit generates tests at compile time. Structure tests in the domain:
-
-```csharp
-public class CounterTests
-{
-    [Test]
-    public async Task Increment_IncrementsCount()
-    {
-        var (state, effect) = Counter.Transition(
-            new CounterState(0),
-            new CounterEvent.Increment());
-
-        await Assert.That(state.Count).IsEqualTo(1);
-    }
-}
-```
-
-No `Arrange`, `Act`, `Assert` comments. TUnit is parallel by default — no shared state.
-
-## C# Language Features
-
-- **Records:** Default for state and events (immutable, value equality)
-- **Pattern matching:** Prefer over if/else and traditional switch
-- **Switch expressions:** `x switch { ... }` over switch statements
-- **Required init-only:** `public required string Name { get; init; }` for aggregate creation
-- **Primary constructors (C# 12+):** `public record Counter(int Count);`
-- **using declarations:** File-scoped namespaces, single-line imports
-
-## No Implementation Blockers
-
-Fenster is ready to build. Designs are clear; domain patterns established. See `.squad/decisions.md` for constraints.
+## Learnings
+- 2026-04-04: Program-level decider validation can now express user-facing failures via `Result<Message[], Message>.Err(...)`; runtime should dispatch `decision.Error` through the same transition pipeline to preserve UX consistency (e.g., Conduit form errors still land in `HandleApiError` without fabricating `Ok(ApiError)` events).
+- 2026-04-04: Completed full strict decider migration in Abies runtime and Program contract surface. `Program<TModel, TArgument>` no longer supplies default `Decide`/`IsTerminal` shims. `Runtime.Dispatch` now runs decider-first command handling (`IsTerminal` guard + `Decide` + event dispatch) under a command-level gate, removing the old command-as-event compatibility path. Validation matrix passed for core/builds/server/tests/templates/conduit unit tests; Conduit E2E has one remaining failure (`DeleteArticle_AsAuthor_ShouldNavigateToHome`, `.article-page` visibility timeout).
+- 2026-04-04: `Program<TModel, TArgument> : Decider<...>` migration is directionally correct, but explicit `Decide` implementations are still required in practice for some implementers. `dotnet build Picea.Abies.sln -c Debug` currently fails with CS0535 in `Picea.Abies.Server.Tests/PageTests.cs` and `Picea.Abies.Server.Kestrel.Tests/EndpointTests.cs` because `TestCounter` lacks `Decide` (and should also define `IsTerminal` for consistency). Treat this as a true breaking migration: update all `Program` implementers, templates, and docs together.
+- 2026-04-04: Promoting `Program<TModel, TArgument>` to a `Decider<...>` requires explicit `Decide` implementations on concrete Program classes. Static interface defaults in `Program` do not satisfy inherited `Decider` static abstract members for implementers. The safe default for MVU programs is pass-through decisioning (`Ok([message])`) and non-terminal behavior (`IsTerminal => false`).
+- 2026-03-29: **step-forward DOES call TryApplyDebuggerSnapshot — no fix needed.** Full trace: JS sends `step-forward` → `Interop.DispatchDebuggerMessage` → `DebuggerRuntimeBridge.Execute` (calls `DebuggerMachine.StepForward`, which moves cursor AND sets `_currentModelSnapshot` from `_timelineModelSnapshots`) → `ApplyDebuggerSnapshot(Debugger.CurrentModelSnapshot)` (wired to `runtime.TryApplyDebuggerSnapshot`) → `ApplySnapshot` → `TrySetCoreState + Render`. Same pattern on Server (Session.cs:321). All 9 message types (`jump-to-entry`, `step-forward`, `step-back`, `play`, `pause`, `clear-timeline`, `get-timeline`, `export-session`, `import-session`) unconditionally trigger `TryApplyDebuggerSnapshot` after bridge execution. If the app doesn't visually update during play, the root cause is the snapshot content (imported sessions store string previews not full models), NOT missing `ApplySnapshot` calls.
+- 2026-03-29: **Debugger session import/StepForward bug — root cause: abstract DU serialization.** — root cause: abstract DU serialization.** `GenerateModelSnapshot` uses `JsonSerializer.Serialize(model)` with default options. For models with an abstract discriminated union (DU) such as `Page` in Conduit, the produced JSON has NO `$type` discriminator. On import, `_timelineModelSnapshots[i].Snapshot` holds that JSON string. `TryApplyDebuggerSnapshot(string)` calls `JsonSerializer.Deserialize<TModel>(json)` which throws `NotSupportedException` (cannot instantiate abstract `Page`). The catch block silently returns `false`, so `Render()` is never called — no DOM patches — **no UI change**. Fix: annotate abstract DU roots with `[JsonPolymorphic]` + `[JsonDerivedType]`. Default `JsonSerializer` then emits/reads `$type`, enabling round-trip. Test coverage was also missing: add a test specifically for StepForward after ImportSession.
+- 2026-03-27: InteractiveServer and InteractiveAuto debugger bootstrap must resolve a server-owned sibling asset under `/_abies/` instead of assuming `/debugger.js` exists in the host app. Cover this with HTTP-level tests that fetch the live asset path from both `UseAbiesStaticFiles()` and a generated server template app.
+- 2026-03-27: For deterministic Debug startup behavior in WASM apps/templates, set `DebuggerConfiguration.ConfigureDebugger(new DebuggerOptions { Enabled = !debugUiOptOut })` at the top of `Program.cs` with an `ABIES_DEBUG_UI=0` opt-out. This avoids cross-run/static-config drift and keeps default-enabled behavior explicit.
+- 2026-03-26: WASM templates now ship with an additional `AbiesApp.Host` project that serves the WASM AppBundle and maps `MapOtlpProxy()` so browser OTel spans can flow to a backend endpoint by default.
+- 2026-03-26: Keep `AbiesApp.Host/**` excluded from the root WASM project (`Compile/Content/EmbeddedResource/None Remove`) to avoid top-level statement collisions during normal `dotnet build` of the generated WASM project.
+- 2026-03-26: Template defaults for browser tracing are now enabled via `<meta name="otel-verbosity" content="user">` in template `wwwroot/index.html` files.
+- 2026-03-26: Server-side template tracing defaults use OpenTelemetry with `.AddConsoleExporter()` and `MapOtlpProxy()` to provide immediate observable end-to-end trace flow.
+- 2026-03-26: InteractiveServer WebSocket events now accept optional top-level `traceparent` and `tracestate` fields; `Session.RunEventLoop` restores that parent on a per-event activity so downstream runtime spans stay on the browser event trace.
+- 2026-03-26: **OTEL trace propagation now complete for all render modes**. Conduit.API and PostgreSQL activity sources inherit via ServiceDefaults to all hosts; Conduit.Wasm.Host, Conduit.Server, Counter.Wasm.Host, Counter.Server all register `/otlp/v1/traces` proxy endpoint for browser spans. Browser SDK auto-discovers OTEL via `otel-verbosity` meta tag. End-to-end distributed tracing now spans browser → WebSocket/HTTP → server activity → database queries.
+- 2026-03-26: **Activity source configuration unlocks Conduit distributed traces**. Use `ActivitySource.CreateActivity()` with appropriate tags for API operations, database calls, and business logic boundaries. Wire parent/child relationships remain intact through W3C `traceparent` propagation in both browser and server contexts.
+- 2026-03-26: **Consumer apps now default to user-level OTEL verbosity**. Counter, UI.Demo, and SubscriptionsDemo templates ship with `<meta name="otel-verbosity" content="user">` to enable DOM events and fetch tracing by default; developers can override via `window.__otel.setVerbosity('debug')` or completely disable with `otel-verbosity="off"`.
+- 2026-03-27: Live AppHost validation for Conduit WASM showed the non-JS path is ready: the page served from `https://localhost:5201` initializes browser OTEL, `ConduitProgram` emits `<meta name="otel-verbosity" content="user">`, `Conduit.Wasm.Host` maps `MapOtlpProxy()`, and a direct `POST /otlp/v1/traces` against the running host returned HTTP 200 under AppHost. If spans still do not appear, the remaining fault is on the browser/exporter side rather than backend proxy acceptance.

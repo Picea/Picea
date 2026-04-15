@@ -1,30 +1,12 @@
-📌 Onboarded for **Picea Core** on 2026-03-30. Squad imported from Picea.Abies project; context refreshed.
-
 # Senior JavaScript Developer — History
 
 ## About This File
 
-Project-specific learnings from JS/TS work. Picea Core is C#/.NET only — no JavaScript is required for the kernel library. This role exists for potential future integrations (e.g., WASM bindings, JavaScript runtimes).
-
-## Picea Core Surface
-
-**Picea** (the kernel) is a pure C# library. No JavaScript work is required for the core.
-
-If JavaScript work becomes necessary (e.g., WASM interop, JS runtimes that use Picea patterns, documentation examples), it would fall into these categories:
-
-### Potential JavaScript Use Cases
-
-1. **WASM Bindings** — If Picea publishes C# code as WASM for browser consumption, JS glue code would be needed
-2. **Documentation Examples** — Interactive browser examples of Mealy machines or domain models
-3. **Tooling** — Potential build tools, generators, or IDE extensions (though C# tooling is primary)
-
-### Current Status
-
-No JavaScript code in Picea Core. All work is C#/.NET focused.
+Project-specific learnings from JS/TS work. Read this before every session.
 
 ## Patterns Established
 
-*None yet — keeping warm for any future web/WASM integrations.*
+*None yet — this grows as the codebase takes shape.*
 
 ## Dependencies Added
 
@@ -42,11 +24,28 @@ No JavaScript code in Picea Core. All work is C#/.NET focused.
 
 ## Conventions
 
-*None yet — propose team-wide conventions via `.squad/decisions/inbox/` if/when JS work begins.*
+*None yet — propose team-wide conventions via `.squad/decisions/inbox/`.*
 
 ## Learnings
 
-*None yet — standing by for JavaScript work.*
+### 2026-03-29 — Time-travel debugger "next after import" bug
+
+**Files**: `Picea.Abies.Browser/wwwroot/debugger.js` (canonical), `Picea.Abies.Server.Kestrel/wwwroot/_abies/debugger.js` (copy — always keep identical)
+
+#### "Next" button code path
+- Element: `<button data-intent="step-forward">` in the transport controls bar
+- Handler: delegated `click` on `els.panel` → reads `data-intent` attribute
+- Call: `invokeRuntimeBridge('step-forward', -1)` — async, waits for C# response before updating UI
+- No optimistic cursor update; UI only changes after the bridge responds
+
+#### Import flow (with bridge)
+`importSession()` → `invokeRuntimeBridge('import-session', -1, bridgePayload)` → C# loads session → response updates `lastResponse` + calls `updateUI()`. `detachedImportedSession` is always reset to `false` inside `invokeRuntimeBridge`, so the Next button is enabled after bridge-based import (provided `atEnd !== true`).
+
+#### Bug 1 — stale event list after same-size bridge import (fixed)
+`invokeRuntimeBridge` only re-syncs `localTimeline` when `response.timelineSize !== localTimeline.length`. If the imported session has the same number of entries as the pre-import live recording, the event list continues to show the old (wrong) entries even though C# now holds the imported timeline. Fix: in `importSession` bridge path, after a successful import, unconditionally set `localTimeline = session.timelineEntries` and call `updateUI()`.
+
+#### Bug 2 — detached mode blocks all navigation (fixed)
+When no bridge is present, `applyImportedSession()` sets `detachedImportedSession = true`. Every handler (panel click, scrubber, event-list click, keyboard arrows) checked `if (detachedImportedSession)` and called `showDetachedSessionNotice()` instead of acting. `updateDisabledStates()` used `canControlLiveRuntime = hasBridge && !detachedImportedSession` to disable all buttons including Back/Next/Scrubber. Result: user could see the imported entry list but could not navigate it at all — pressing Next showed a notice with no UI change.
 
 Fix: added `navigateDetached(cursor)` — updates `lastResponse` (cursorPosition, atStart, atEnd, currentEntry, model snapshots) from local `localTimeline` and calls `updateUI()`. Updated all handlers to call `navigateDetached` for step/scrubber/entry-click in detached mode. Updated `updateDisabledStates` to treat detached mode as a special branch: Back/Next/Scrubber enabled based on cursor position; Play/Clear remain disabled (no live runtime).
 
