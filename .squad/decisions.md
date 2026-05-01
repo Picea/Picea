@@ -483,3 +483,38 @@ Verification performed on 2026-03-25: every open issue has exactly one priority 
 - Add migration guard tests that fail early when Program contract changes are not propagated.
 - Keep `AutomatonRuntime` coupling until a replacement path is benchmarked, verified, and documented in ADR.
 **Why:** Current state is directionally correct but not release-safe without propagation and guardrails.
+
+### 2026-04-04T00:00:00Z: Full decider cutover target is the final migration contract
+**By:** Architect
+**Requested by:** Maurice Cornelius Gerardus Petrus Peters
+**What:** Runtime/host contracts are decider-native end-to-end, `Program<TModel, TArgument>` remains strict decider shape, and compatibility/default decider shims are removed so every Program implementer explicitly defines `Decide` and `IsTerminal`.
+**Why:** User requested a breaking full cutover to a single decider-native contract path and removal of staged compatibility behavior.
+
+### 2026-04-04T00:00:00Z: MVU Program decider errors are explicit `Message` values
+**By:** C# Dev
+**Requested by:** Maurice Cornelius Gerardus Petrus Peters
+**What:** Program deciders use `Result<Message[], Message>` so validation failures are represented as `Err` and dispatched through normal program message flow.
+**Why:** Restores explicit decider error semantics while preserving user-visible transition behavior.
+
+### 2026-04-04T00:00:00Z: Runtime dispatch synchronization must not create navigation starvation
+**By:** Reviewer
+**What:** Runtime command synchronization should avoid holding a global gate across long-running async interpretation/dispatch work, and must preserve responsive routing/navigation under in-flight effects.
+**Why:** Full-audit review identified head-of-line blocking risk and likely Conduit navigation regression when `UrlChanged` is queued behind slow command flows.
+
+### 2026-05-01T00:00:00Z: Production-readiness security governance is not ready
+**By:** Security Expert
+**Requested by:** Maurice Cornelius Gerardus Petrus Peters
+**What:** Production-ready security posture requires threat-model artifact (`docs/security/threat-model.md`) and full automated security controls (secrets, DAST, container scan) in addition to existing SAST/SCA signals.
+**Why:** Current repository governance and CI evidence do not satisfy the team security baseline in canonical decisions.
+
+### 2026-05-01T00:00:00Z: Production-readiness performance governance is conditionally not ready
+**By:** Performance Engineer
+**Requested by:** Maurice Cornelius Gerardus Petrus Peters
+**What:** Production performance sign-off requires explicit budgets, fresh benchmark baselines tied to current suite/commit, stricter regression threshold alignment, pre-merge performance guard coverage, and at least one load-test evidence package.
+**Why:** Current evidence is insufficient for a formal production performance guarantee.
+
+### 2026-05-01T00:00:00Z: Production release declaration remains blocked by readiness artifacts
+**By:** Reviewer
+**Requested by:** Maurice Cornelius Gerardus Petrus Peters
+**What:** Treat production declaration as blocked until security threat-model artifact exists, warning discipline is enforced in CI, and release metadata/version policy are aligned.
+**Why:** Independent repository-level readiness review identified these as release-blocking governance gaps.

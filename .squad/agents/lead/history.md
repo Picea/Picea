@@ -11,3 +11,4 @@ Coordination decisions, triage outcomes, and team dynamics. Read this before eve
 
 ## Coordination Decisions
 - 2026-03-27: Use a browser E2E assertion that waits for `/_abies/debugger.js` to return `200`, then verifies `#abies-debugger-timeline[data-abies-debugger-adapter-initialized="1"]` exists and `window.__abiesDebugger.enabled` is `true`; this specifically catches debugger import-path regressions in `abies-server.js` without reopening locked implementation files.
+- 2026-05-01: Consolidated Reviewer, Security Expert, and Performance Engineer production-readiness assessments into a shared readiness gate: do not declare production-ready until threat-model/security-pipeline gaps, warning/release-metadata governance gaps, and explicit performance budget/baseline/load-test evidence gaps are all closed.
