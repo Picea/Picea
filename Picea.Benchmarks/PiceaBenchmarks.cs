@@ -17,6 +17,8 @@ namespace Picea.Benchmarks;
 [JsonExporterAttribute.FullCompressed]
 public class PiceaBenchmarks
 {
+    private const int MicroOperationsPerInvoke = 10_000;
+
     // ── Runtimes rebuilt per iteration to prevent list growth bias ────
 
     private AutomatonRuntime<BenchAutomaton, BenchState, BenchEvent, BenchEffect, Unit> _runtimeNoOp = null!;
@@ -57,6 +59,16 @@ public class PiceaBenchmarks
     private static readonly RecBenchEvent.WithEffect _recEffectEvent = new(1);
     private static readonly RecBenchCommand.Add _recAcceptCommand = new(1);
     private static readonly RecBenchCommand.Reject _recRejectCommand = new();
+
+    private static async ValueTask<TResult> RunRepeated<TResult>(Func<ValueTask<TResult>> operation)
+    {
+        TResult result = default!;
+
+        for (var i = 0; i < MicroOperationsPerInvoke; i++)
+            result = await operation().ConfigureAwait(false);
+
+        return result;
+    }
 
     [IterationSetup]
     public void Setup()
@@ -131,26 +143,16 @@ public class PiceaBenchmarks
 
     // ── Dispatch benchmarks ──────────────────────────────────────────
 
-    // [OperationsPerInvoke] is required here because this is a sub-microsecond
-    // hot path on CI runners and timer granularity otherwise dominates the
-    // measurement enough to create false >5% regressions.
-    [Benchmark(Description = "Dispatch (no-op observer, no-op interpreter)", OperationsPerInvoke = 10_000)]
-    public async ValueTask<Result<Unit, PipelineError>> Dispatch_Single()
-    {
-        Result<Unit, PipelineError> result = default;
-        for (var i = 0; i < 10_000; i++)
-            result = await _runtimeNoOp.Dispatch(_singleEvent);
-        return result;
-    }
+    // Single-operation hot paths use [OperationsPerInvoke] because [IterationSetup]
+    // forces invocationCount=1. Without batching, Linux CI timer granularity dominates
+    // these sub-microsecond measurements and creates false regressions against the 5% gate.
+    [Benchmark(Description = "Dispatch (no-op observer, no-op interpreter)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<Unit, PipelineError>> Dispatch_Single() =>
+        RunRepeated(() => _runtimeNoOp.Dispatch(_singleEvent));
 
-    [Benchmark(Description = "Dispatch (observer touches state/event/effect)", OperationsPerInvoke = 10_000)]
-    public async ValueTask<Result<Unit, PipelineError>> Dispatch_WithObserver()
-    {
-        Result<Unit, PipelineError> result = default;
-        for (var i = 0; i < 10_000; i++)
-            result = await _runtimeObserver.Dispatch(_singleEvent);
-        return result;
-    }
+    [Benchmark(Description = "Dispatch (observer touches state/event/effect)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<Unit, PipelineError>> Dispatch_WithObserver() =>
+        RunRepeated(() => _runtimeObserver.Dispatch(_singleEvent));
 
     [Benchmark(Description = "Dispatch × 100 (batch, no-op)")]
     public async Task Dispatch_Batch_100()
@@ -159,117 +161,79 @@ public class PiceaBenchmarks
             _ = await _runtimeNoOp.Dispatch(_singleEvent);
     }
 
-    [Benchmark(Description = "Dispatch with interpreter feedback (1 level)")]
-    public ValueTask<Result<Unit, PipelineError>> Dispatch_WithFeedback()
-        => _runtimeFeedback.Dispatch(_effectEvent);
+    [Benchmark(Description = "Dispatch with interpreter feedback (1 level)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<Unit, PipelineError>> Dispatch_WithFeedback() =>
+        RunRepeated(() => _runtimeFeedback.Dispatch(_effectEvent));
 
-    // [OperationsPerInvoke] is required here: this benchmark is ~200 ns per call, which is far
-    // below BDN's MinIterationTime. With [IterationSetup] forcing invocationCount=1, a single
-    // iteration is so short that timer granularity (~100 ns on Linux CI) accounts for >50% noise,
-    // making the 5% regression threshold meaningless. Looping 10 000 times per invocation raises
-    // each iteration to ~2 ms so timer noise drops to <0.01 %. BDN divides the measured time
-    // by the OperationsPerInvoke count, keeping the reported number as "cost per dispatch".
-    [Benchmark(Description = "Dispatch with composed observer (Then)", OperationsPerInvoke = 10_000)]
-    public async ValueTask<Result<Unit, PipelineError>> Dispatch_ComposedObserver()
-    {
-        Result<Unit, PipelineError> result = default;
-        for (var i = 0; i < 10_000; i++)
-            result = await _runtimeComposed.Dispatch(_singleEvent);
-        return result;
-    }
+    [Benchmark(Description = "Dispatch with composed observer (Then)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<Unit, PipelineError>> Dispatch_ComposedObserver() =>
+        RunRepeated(() => _runtimeComposed.Dispatch(_singleEvent));
 
-    [Benchmark(Description = "Dispatch with EventLog observer append")]
-    public ValueTask<Result<Unit, PipelineError>> Dispatch_WithEventLogObserver()
-        => _runtimeEventLog.Dispatch(_singleEvent);
+    [Benchmark(Description = "Dispatch with EventLog observer append", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<Unit, PipelineError>> Dispatch_WithEventLogObserver() =>
+        RunRepeated(() => _runtimeEventLog.Dispatch(_singleEvent));
 
     // ── Decider benchmarks ───────────────────────────────────────────
 
-    [Benchmark(Description = "Handle — accept (1 event dispatched)")]
-    public ValueTask<Result<BenchState, BenchError>> Handle_Accept()
-        => _decider.Handle(_acceptCommand);
+    [Benchmark(Description = "Handle — accept (1 event dispatched)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<BenchState, BenchError>> Handle_Accept() =>
+        RunRepeated(() => _decider.Handle(_acceptCommand));
 
-    [Benchmark(Description = "Handle — reject (0 events, error returned)")]
-    public ValueTask<Result<BenchState, BenchError>> Handle_Reject()
-        => _decider.Handle(_rejectCommand);
+    [Benchmark(Description = "Handle — reject (0 events, error returned)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<BenchState, BenchError>> Handle_Reject() =>
+        RunRepeated(() => _decider.Handle(_rejectCommand));
 
     // ── Safe-no-track benchmarks (threadSafe=true, trackEvents=false) ─
 
-    [Benchmark(Description = "Safe Dispatch (no tracking)")]
-    public ValueTask<Result<Unit, PipelineError>> Safe_NoTrack_Dispatch_Single()
-        => _safeNoTrackNoOp.Dispatch(_singleEvent);
+    [Benchmark(Description = "Safe Dispatch (no tracking)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<Unit, PipelineError>> Safe_NoTrack_Dispatch_Single() =>
+        RunRepeated(() => _safeNoTrackNoOp.Dispatch(_singleEvent));
 
-    [Benchmark(Description = "Safe Dispatch with feedback (no tracking)")]
-    public ValueTask<Result<Unit, PipelineError>> Safe_NoTrack_Dispatch_WithFeedback()
-        => _safeNoTrackFeedback.Dispatch(_effectEvent);
+    [Benchmark(Description = "Safe Dispatch with feedback (no tracking)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<Unit, PipelineError>> Safe_NoTrack_Dispatch_WithFeedback() =>
+        RunRepeated(() => _safeNoTrackFeedback.Dispatch(_effectEvent));
 
-    [Benchmark(Description = "Safe Handle — accept (no tracking)")]
-    public ValueTask<Result<BenchState, BenchError>> Safe_NoTrack_Handle_Accept()
-        => _safeNoTrackDecider.Handle(_acceptCommand);
+    [Benchmark(Description = "Safe Handle — accept (no tracking)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<BenchState, BenchError>> Safe_NoTrack_Handle_Accept() =>
+        RunRepeated(() => _safeNoTrackDecider.Handle(_acceptCommand));
 
-    [Benchmark(Description = "Safe Handle — reject (no tracking)", OperationsPerInvoke = 10_000)]
-    public async ValueTask<Result<BenchState, BenchError>> Safe_NoTrack_Handle_Reject()
-    {
-        Result<BenchState, BenchError> result = default;
-        for (var i = 0; i < 10_000; i++)
-            result = await _safeNoTrackDecider.Handle(_rejectCommand);
-        return result;
-    }
+    [Benchmark(Description = "Safe Handle — reject (no tracking)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<BenchState, BenchError>> Safe_NoTrack_Handle_Reject() =>
+        RunRepeated(() => _safeNoTrackDecider.Handle(_rejectCommand));
 
     // ── Lean benchmarks (threadSafe=false, trackEvents=false) ────────
 
-    // [OperationsPerInvoke] is required here for the same reason as the other
-    // tiny hot-path benchmarks above: one dispatch is far below MinIterationTime,
-    // so CI timer granularity can dominate the measurement and create false
-    // regressions against the 5% threshold.
-    [Benchmark(Description = "Lean Dispatch (no-op, unserialized, no tracking)", OperationsPerInvoke = 10_000)]
-    public async ValueTask<Result<Unit, PipelineError>> Lean_Dispatch_Single()
-    {
-        Result<Unit, PipelineError> result = default;
-        for (var i = 0; i < 10_000; i++)
-            result = await _leanNoOp.Dispatch(_singleEvent);
-        return result;
-    }
+    [Benchmark(Description = "Lean Dispatch (no-op, unserialized, no tracking)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<Unit, PipelineError>> Lean_Dispatch_Single() =>
+        RunRepeated(() => _leanNoOp.Dispatch(_singleEvent));
 
-    [Benchmark(Description = "Lean Dispatch with feedback (unserialized, no tracking)")]
-    public ValueTask<Result<Unit, PipelineError>> Lean_Dispatch_WithFeedback()
-        => _leanFeedback.Dispatch(_effectEvent);
+    [Benchmark(Description = "Lean Dispatch with feedback (unserialized, no tracking)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<Unit, PipelineError>> Lean_Dispatch_WithFeedback() =>
+        RunRepeated(() => _leanFeedback.Dispatch(_effectEvent));
 
-    [Benchmark(Description = "Lean Handle — accept (unserialized, no tracking)")]
-    public ValueTask<Result<BenchState, BenchError>> Lean_Handle_Accept()
-        => _leanDecider.Handle(_acceptCommand);
+    [Benchmark(Description = "Lean Handle — accept (unserialized, no tracking)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<BenchState, BenchError>> Lean_Handle_Accept() =>
+        RunRepeated(() => _leanDecider.Handle(_acceptCommand));
 
-    [Benchmark(Description = "Lean Handle — reject (unserialized, no tracking)")]
-    public ValueTask<Result<BenchState, BenchError>> Lean_Handle_Reject()
-        => _leanDecider.Handle(_rejectCommand);
+    [Benchmark(Description = "Lean Handle — reject (unserialized, no tracking)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<BenchState, BenchError>> Lean_Handle_Reject() =>
+        RunRepeated(() => _leanDecider.Handle(_rejectCommand));
 
     // ── Record-based lean benchmarks (abstract record DU, no boxing) ─
 
-    [Benchmark(Description = "Lean Dispatch (record-based, zero-alloc)", OperationsPerInvoke = 10_000)]
-    public async ValueTask<Result<Unit, PipelineError>> Rec_Lean_Dispatch_Single()
-    {
-        Result<Unit, PipelineError> result = default;
-        for (var i = 0; i < 10_000; i++)
-            result = await _recLeanNoOp.Dispatch(_recSingleEvent);
-        return result;
-    }
+    [Benchmark(Description = "Lean Dispatch (record-based, zero-alloc)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<Unit, PipelineError>> Rec_Lean_Dispatch_Single() =>
+        RunRepeated(() => _recLeanNoOp.Dispatch(_recSingleEvent));
 
-    [Benchmark(Description = "Lean Dispatch with feedback (record-based)")]
-    public ValueTask<Result<Unit, PipelineError>> Rec_Lean_Dispatch_WithFeedback()
-        => _recLeanFeedback.Dispatch(_recEffectEvent);
+    [Benchmark(Description = "Lean Dispatch with feedback (record-based)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<Unit, PipelineError>> Rec_Lean_Dispatch_WithFeedback() =>
+        RunRepeated(() => _recLeanFeedback.Dispatch(_recEffectEvent));
 
-    [Benchmark(Description = "Lean Handle — accept (record-based)")]
-    public ValueTask<Result<RecBenchState, RecBenchError>> Rec_Lean_Handle_Accept()
-        => _recLeanDecider.Handle(_recAcceptCommand);
+    [Benchmark(Description = "Lean Handle — accept (record-based)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<RecBenchState, RecBenchError>> Rec_Lean_Handle_Accept() =>
+        RunRepeated(() => _recLeanDecider.Handle(_recAcceptCommand));
 
-    // [OperationsPerInvoke] is required here: reject is effectively zero-cost (no events emitted,
-    // no state mutation) so each call is ~100 ns. The same timer-noise problem as
-    // Dispatch_ComposedObserver applies — see comment above for the full rationale.
-    [Benchmark(Description = "Lean Handle — reject (record-based, zero-alloc)", OperationsPerInvoke = 10_000)]
-    public async ValueTask<Result<RecBenchState, RecBenchError>> Rec_Lean_Handle_Reject()
-    {
-        Result<RecBenchState, RecBenchError> result = default;
-        for (var i = 0; i < 10_000; i++)
-            result = await _recLeanDecider.Handle(_recRejectCommand);
-        return result;
-    }
+    [Benchmark(Description = "Lean Handle — reject (record-based, zero-alloc)", OperationsPerInvoke = MicroOperationsPerInvoke)]
+    public ValueTask<Result<RecBenchState, RecBenchError>> Rec_Lean_Handle_Reject() =>
+        RunRepeated(() => _recLeanDecider.Handle(_recRejectCommand));
 }
