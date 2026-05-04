@@ -50,6 +50,8 @@ public static class AutomatonDiagnostics
         SourceName,
         typeof(AutomatonDiagnostics).Assembly.GetName().Version?.ToString() ?? "0.0.0");
 
+    internal static bool IsEnabled => Source.HasListeners();
+
     internal static Activity? StartActivity(string name) =>
-        Source.HasListeners() ? Source.StartActivity(name) : null;
+        IsEnabled ? Source.StartActivity(name) : null;
 }

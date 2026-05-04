@@ -122,6 +122,9 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
     /// </returns>
     public ValueTask<Result<TState, TError>> Handle(TCommand command, CancellationToken cancellationToken = default)
     {
+        if (!AutomatonDiagnostics.IsEnabled)
+            return HandleWithoutTracing(command, cancellationToken);
+
         var activity = AutomatonDiagnostics.StartActivity("Automaton.Decider.Handle");
         activity?.SetTag("automaton.type", _deciderTypeName);
         activity?.SetTag("automaton.command.type", command?.GetType().Name);
@@ -136,6 +139,219 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
         }
 
         return HandleUnserialized(command, activity, cancellationToken);
+    }
+
+    private ValueTask<Result<TState, TError>> HandleWithoutTracing(TCommand command, CancellationToken cancellationToken)
+    {
+        if (_core.IsThreadSafe)
+        {
+            var waitTask = _core.Gate.WaitAsync(cancellationToken);
+            if (waitTask.IsCompletedSuccessfully)
+                return HandleAfterGateWithoutTracing(command, cancellationToken);
+
+            return AwaitGateThenHandleWithoutTracing(waitTask, command, cancellationToken);
+        }
+
+        return HandleUnserializedWithoutTracing(command, cancellationToken);
+    }
+
+    private ValueTask<Result<TState, TError>> HandleUnserializedWithoutTracing(
+        TCommand command, CancellationToken cancellationToken)
+    {
+        var decided = TDecider.Decide(_core.State, command);
+        if (decided.IsOk)
+        {
+            decided.TryGetValue(out var decidedEvents);
+            return DispatchEventsAndReturnOkUnserializedWithoutTracing(
+                ContractGuards.RequireNonNullArray(decidedEvents),
+                cancellationToken);
+        }
+
+        decided.TryGetError(out var error);
+        return new ValueTask<Result<TState, TError>>(
+            Result<TState, TError>.Err(error));
+    }
+
+    private ValueTask<Result<TState, TError>> DispatchEventsAndReturnOkUnserializedWithoutTracing(
+        TEvent[] events,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            for (var i = 0; i < events.Length; i++)
+            {
+                var dispatchTask = _core.DispatchUnlocked(events[i], 0, cancellationToken);
+                if (!dispatchTask.IsCompletedSuccessfully)
+                    return AwaitRemainingEventsAndReturnOkUnserializedWithoutTracing(dispatchTask, events, i + 1, cancellationToken);
+
+                var dispatchResult = dispatchTask.Result;
+                if (dispatchResult.IsErr)
+                {
+                    dispatchResult.TryGetError(out var dispatchError);
+                    throw new InvalidOperationException(
+                        $"Pipeline error during dispatch: {dispatchError}",
+                        dispatchError.Exception);
+                }
+            }
+
+            return new ValueTask<Result<TState, TError>>(
+                Result<TState, TError>.Ok(_core.State));
+        }
+        catch
+        {
+            throw;
+        }
+    }
+
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    private async ValueTask<Result<TState, TError>> AwaitRemainingEventsAndReturnOkUnserializedWithoutTracing(
+        ValueTask<Result<Unit, PipelineError>> pendingTask, TEvent[] events, int startIndex,
+        CancellationToken cancellationToken)
+    {
+        var pendingResult = await pendingTask.ConfigureAwait(false);
+        if (pendingResult.IsErr)
+        {
+            pendingResult.TryGetError(out var pendingError);
+            throw new InvalidOperationException(
+                $"Pipeline error during dispatch: {pendingError}",
+                pendingError.Exception);
+        }
+
+        for (var i = startIndex; i < events.Length; i++)
+        {
+            var result = await _core.DispatchUnlocked(events[i], 0, cancellationToken).ConfigureAwait(false);
+            if (result.IsErr)
+            {
+                result.TryGetError(out var dispatchError);
+                throw new InvalidOperationException(
+                    $"Pipeline error during dispatch: {dispatchError}",
+                    dispatchError.Exception);
+            }
+        }
+
+        return Result<TState, TError>.Ok(_core.State);
+    }
+
+    private ValueTask<Result<TState, TError>> HandleAfterGateWithoutTracing(TCommand command,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var decided = TDecider.Decide(_core.State, command);
+            if (decided.IsOk)
+            {
+                decided.TryGetValue(out var decidedEvents);
+                return DispatchEventsAndReturnOkWithoutTracing(
+                    ContractGuards.RequireNonNullArray(decidedEvents),
+                    cancellationToken);
+            }
+
+            decided.TryGetError(out var error);
+            _core.Gate.Release();
+            return new ValueTask<Result<TState, TError>>(
+                Result<TState, TError>.Err(error));
+        }
+        catch
+        {
+            _core.Gate.Release();
+            throw;
+        }
+    }
+
+    private ValueTask<Result<TState, TError>> DispatchEventsAndReturnOkWithoutTracing(TEvent[] events,
+        CancellationToken cancellationToken)
+    {
+        for (var i = 0; i < events.Length; i++)
+        {
+            var dispatchTask = _core.DispatchUnlocked(events[i], 0, cancellationToken);
+            if (!dispatchTask.IsCompletedSuccessfully)
+                return AwaitRemainingEventsAndReturnOkWithoutTracing(dispatchTask, events, i + 1, cancellationToken);
+
+            var dispatchResult = dispatchTask.Result;
+            if (dispatchResult.IsErr)
+            {
+                dispatchResult.TryGetError(out var dispatchError);
+                throw new InvalidOperationException(
+                    $"Pipeline error during dispatch: {dispatchError}",
+                    dispatchError.Exception);
+            }
+        }
+
+        _core.Gate.Release();
+        return new ValueTask<Result<TState, TError>>(
+            Result<TState, TError>.Ok(_core.State));
+    }
+
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    private async ValueTask<Result<TState, TError>> AwaitRemainingEventsAndReturnOkWithoutTracing(
+        ValueTask<Result<Unit, PipelineError>> pendingTask, TEvent[] events, int startIndex,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var pendingResult = await pendingTask.ConfigureAwait(false);
+            if (pendingResult.IsErr)
+            {
+                pendingResult.TryGetError(out var pendingError);
+                throw new InvalidOperationException(
+                    $"Pipeline error during dispatch: {pendingError}",
+                    pendingError.Exception);
+            }
+
+            for (var i = startIndex; i < events.Length; i++)
+            {
+                var result = await _core.DispatchUnlocked(events[i], 0, cancellationToken).ConfigureAwait(false);
+                if (result.IsErr)
+                {
+                    result.TryGetError(out var dispatchError);
+                    throw new InvalidOperationException(
+                        $"Pipeline error during dispatch: {dispatchError}",
+                        dispatchError.Exception);
+                }
+            }
+
+            return Result<TState, TError>.Ok(_core.State);
+        }
+        finally
+        {
+            _core.Gate.Release();
+        }
+    }
+
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    private async ValueTask<Result<TState, TError>> AwaitGateThenHandleWithoutTracing(Task waitTask,
+        TCommand command, CancellationToken cancellationToken)
+    {
+        await waitTask.ConfigureAwait(false);
+        try
+        {
+            var decided = TDecider.Decide(_core.State, command);
+            if (decided.IsOk)
+            {
+                decided.TryGetValue(out var decidedEvents);
+                var events = ContractGuards.RequireNonNullArray(decidedEvents);
+                foreach (var @event in events)
+                {
+                    var result = await _core.DispatchUnlocked(@event, 0, cancellationToken).ConfigureAwait(false);
+                    if (result.IsErr)
+                    {
+                        result.TryGetError(out var dispatchError);
+                        throw new InvalidOperationException(
+                            $"Pipeline error during dispatch: {dispatchError}",
+                            dispatchError.Exception);
+                    }
+                }
+
+                return Result<TState, TError>.Ok(_core.State);
+            }
+
+            decided.TryGetError(out var error);
+            return Result<TState, TError>.Err(error);
+        }
+        finally
+        {
+            _core.Gate.Release();
+        }
     }
 
     private ValueTask<Result<TState, TError>> HandleUnserialized(

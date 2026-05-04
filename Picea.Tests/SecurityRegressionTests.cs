@@ -185,4 +185,5 @@ public sealed class SecurityRegressionTests
     }
 
     private readonly record struct AuditEvent(int Value);
+
 }

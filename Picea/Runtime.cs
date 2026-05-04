@@ -261,6 +261,9 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     /// </returns>
     public ValueTask<Result<Unit, PipelineError>> Dispatch(TEvent @event, CancellationToken cancellationToken = default)
     {
+        if (!AutomatonDiagnostics.IsEnabled)
+            return DispatchWithoutTracing(@event, cancellationToken);
+
         var activity = AutomatonDiagnostics.StartActivity("Automaton.Dispatch");
         activity?.SetTag("automaton.type", _automatonTypeName);
         activity?.SetTag("automaton.event.type", @event?.GetType().Name);
@@ -275,6 +278,83 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         }
 
         return DispatchUnserialized(@event, activity, cancellationToken);
+    }
+
+    private ValueTask<Result<Unit, PipelineError>> DispatchWithoutTracing(TEvent @event, CancellationToken cancellationToken)
+    {
+        if (_threadSafe)
+        {
+            var waitTask = _gate.WaitAsync(cancellationToken);
+            if (waitTask.IsCompletedSuccessfully)
+                return DispatchAfterGateWithoutTracing(@event, cancellationToken);
+
+            return AwaitGateThenDispatchWithoutTracing(waitTask, @event, cancellationToken);
+        }
+
+        return DispatchUnserializedWithoutTracing(@event, cancellationToken);
+    }
+
+    private ValueTask<Result<Unit, PipelineError>> DispatchUnserializedWithoutTracing(
+        TEvent @event, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return DispatchCore(@event, 0, cancellationToken);
+        }
+        catch
+        {
+            throw;
+        }
+    }
+
+    private ValueTask<Result<Unit, PipelineError>> DispatchAfterGateWithoutTracing(
+        TEvent @event, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var coreTask = DispatchCore(@event, 0, cancellationToken);
+            if (coreTask.IsCompletedSuccessfully)
+            {
+                _gate.Release();
+                return new ValueTask<Result<Unit, PipelineError>>(coreTask.Result);
+            }
+
+            return AwaitCoreThenReleaseWithoutTracing(coreTask);
+        }
+        catch
+        {
+            _gate.Release();
+            throw;
+        }
+    }
+
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    private async ValueTask<Result<Unit, PipelineError>> AwaitCoreThenReleaseWithoutTracing(
+        ValueTask<Result<Unit, PipelineError>> coreTask)
+    {
+        try
+        {
+            return await coreTask.ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    private async ValueTask<Result<Unit, PipelineError>> AwaitGateThenDispatchWithoutTracing(
+        Task waitTask, TEvent @event, CancellationToken cancellationToken)
+    {
+        await waitTask.ConfigureAwait(false);
+        try
+        {
+            return await DispatchCore(@event, 0, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     private ValueTask<Result<Unit, PipelineError>> DispatchUnserialized(
