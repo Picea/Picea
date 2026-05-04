@@ -150,9 +150,20 @@ public class PiceaBenchmarks
     public ValueTask<Result<Unit, PipelineError>> Dispatch_WithFeedback()
         => _runtimeFeedback.Dispatch(_effectEvent);
 
-    [Benchmark(Description = "Dispatch with composed observer (Then)")]
-    public ValueTask<Result<Unit, PipelineError>> Dispatch_ComposedObserver()
-        => _runtimeComposed.Dispatch(_singleEvent);
+    // [OperationsPerInvoke] is required here: this benchmark is ~200 ns per call, which is far
+    // below BDN's MinIterationTime. With [IterationSetup] forcing invocationCount=1, a single
+    // iteration is so short that timer granularity (~100 ns on Linux CI) accounts for >50% noise,
+    // making the 5% regression threshold meaningless. Looping 10 000 times per invocation raises
+    // each iteration to ~2 ms so timer noise drops to <0.01 %. BDN divides the measured time
+    // by the OperationsPerInvoke count, keeping the reported number as "cost per dispatch".
+    [Benchmark(Description = "Dispatch with composed observer (Then)", OperationsPerInvoke = 10_000)]
+    public async ValueTask<Result<Unit, PipelineError>> Dispatch_ComposedObserver()
+    {
+        Result<Unit, PipelineError> result = default;
+        for (var i = 0; i < 10_000; i++)
+            result = await _runtimeComposed.Dispatch(_singleEvent);
+        return result;
+    }
 
     [Benchmark(Description = "Dispatch with EventLog observer append")]
     public ValueTask<Result<Unit, PipelineError>> Dispatch_WithEventLogObserver()
@@ -218,7 +229,15 @@ public class PiceaBenchmarks
     public ValueTask<Result<RecBenchState, RecBenchError>> Rec_Lean_Handle_Accept()
         => _recLeanDecider.Handle(_recAcceptCommand);
 
-    [Benchmark(Description = "Lean Handle — reject (record-based, zero-alloc)")]
-    public ValueTask<Result<RecBenchState, RecBenchError>> Rec_Lean_Handle_Reject()
-        => _recLeanDecider.Handle(_recRejectCommand);
+    // [OperationsPerInvoke] is required here: reject is effectively zero-cost (no events emitted,
+    // no state mutation) so each call is ~100 ns. The same timer-noise problem as
+    // Dispatch_ComposedObserver applies — see comment above for the full rationale.
+    [Benchmark(Description = "Lean Handle — reject (record-based, zero-alloc)", OperationsPerInvoke = 10_000)]
+    public async ValueTask<Result<RecBenchState, RecBenchError>> Rec_Lean_Handle_Reject()
+    {
+        Result<RecBenchState, RecBenchError> result = default;
+        for (var i = 0; i < 10_000; i++)
+            result = await _recLeanDecider.Handle(_recRejectCommand);
+        return result;
+    }
 }
