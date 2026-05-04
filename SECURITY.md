@@ -33,6 +33,20 @@ This information will help us triage your report more quickly.
 
 We prefer all communications to be in English.
 
+## Security Governance Artifacts
+
+The following documents define and track our security governance baseline:
+
+- **Living Threat Model**: [`docs/security/threat-model.md`](docs/security/threat-model.md)
+- **Threat-to-Regression Mapping**: [`docs/security/threat-to-tests.md`](docs/security/threat-to-tests.md)
+
+### Maintenance Expectations
+
+- Update both documents in the same pull request whenever the attack surface changes (new command boundary, persistence mode, runtime behavior, or CI security control).
+- Every threat entry must include concrete verification evidence (existing test names or enforced CI policy checks).
+- Any accepted risk without automated regression coverage must be explicitly documented in the threat-to-tests mapping.
+- Keep threat IDs stable over time; add new IDs instead of renumbering existing threats.
+
 ## Security Measures
 
 ### Automated Dependency Scanning
@@ -89,4 +103,4 @@ For security-related questions that are not vulnerability reports, please open a
 
 ---
 
-*Last Updated: March 9, 2026*
+*Last Updated: May 1, 2026*

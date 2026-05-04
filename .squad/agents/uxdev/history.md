@@ -1,5 +1,3 @@
-📌 Imported from mysquad on 2026-03-30T14:22:07.485Z. Portable knowledge carried over; project learnings from previous project preserved below.
-
 # UI/UX Expert — History
 
 ## About This File

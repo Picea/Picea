@@ -1,87 +1,67 @@
-📌 Onboarded for **Picea Core** on 2026-03-30. Squad imported from Picea.Abies project; context refreshed.
-
 # DevOps / Infrastructure Engineer — History
 
 ## About This File
-Pipeline decisions, container configs, deployment patterns, and CI optimization. Bailey owns release automation.
+Pipeline decisions, container configs, deployment patterns, and CI optimization. Read this before every session.
 
-## Picea Release Pipeline
+## Pipeline Configuration
+*None yet — workflow structure, caching strategy, stage ordering tracked here.*
 
-### Workflows
-| Workflow | Trigger | Job | Purpose |
-|----------|---------|-----|---------|
-| **build.yml** | `main`, `develop`, PRs | `dotnet build` | Compile and validate syntax |
-| **test.yml** | `main`, `develop`, PRs | `dotnet test` (TUnit) | Run all unit tests in parallel |
-| **lint.yml** | `main`, `develop`, PRs | `dotnet format --verify-no-changes` | Code formatting check (Conventional Commits style) |
-| **codeql.yml** | `main`, `develop` | CodeQL security scan | SAST security analysis |
-| **benchmarks.yml** | `main` (post-merge) | BenchmarkDotNet | Performance regression detection (5% threshold) |
-| **cd.yml** | `main` (post-merge) | NuGet publish | Package and publish to NuGet.org |
+## Container Images
+| Image | Base | Size | Last Optimized |
+|---|---|---|---|
+| *None yet* | | | |
 
-### CI Required Checks
-All PRs must pass:
-✅ **Build** — `dotnet build`  
-✅ **Test** — `dotnet test`  
-✅ **Format** — `dotnet format --verify-no-changes`  
-✅ **CodeQL** — Security scanning passes  
-✅ **Approval** — At least 1 approval (Reviewer)  
-✅ **Conversations resolved** — All review comments addressed  
-
-### Versioning
-
-Uses **Nerdbank.GitVersioning** (`version.json`):
-- Version is driven by git tags and the version.json config
-- Patch version auto-increments on each commit to `main`
-- Release version: `git tag v{X.Y.Z}` on main to "cut" a release
-- CI reads the tag and publishes to NuGet with that version
-
-**To cut a release:**
-```bash
-git checkout main
-git pull origin main
-git tag v1.2.3
-git push origin v1.2.3
-```
-CI triggers `cd.yml` → builds, runs tests, publishes `Picea` v1.2.3 to NuGet.
-
-### Trunk-Based Workflow
-
-- **Main branch** is always deployable
-- **Feature branches** are short-lived (<2 days)
-- **Linear history** enforced (squash/rebase merging, no fast-forward merges)
-- **No force pushes** allowed
-- **Status checks** required before merge
-
-### Environment Configuration
-
-**NuGet Publishing:**
-- Token stored as GitHub secret `NUGET_API_KEY`
-- Endpoint: `https://api.nuget.org/v3/index.json`
-- Package: `Picea`
-- Feed includes XML doc comments (`.GenerateDocumentationFile`)
-
-**CodeQL Configuration:**
-- Language: C#
-- Default queries enabled
-- Runs on `main` and `develop` branches
-- Post-merge (non-blocking for PRs, but should be checked before merge)
+## Deployment Topology
+*None yet — environment descriptions, deployment targets, parity notes.*
 
 ## CI Failures Investigated
-*None yet — build/test failures, flakes, and resolutions tracked here.*
+| Date | Failure | Root Cause | Fix |
+|---|---|---|---|
+| *None yet* | | | |
 
-## Release History
-*None yet — what was released, when, any hotfixes.*
+## Release Process
+*None yet — versioning strategy, release flow, automation status.*
 
-## Performance Baseline Infrastructure
+## Environment Gotchas
+*None yet — environment-specific issues and workarounds.*
 
-**BenchmarkDotNet Setup:**
-- Runs on `main` post-merge as the source of truth
-- Results published to `docs/benchmarks/kernel-baseline-*.md`
-- 5% regression threshold triggers alert in release notes
-- Local runs: `dotnet run -c Release -p Picea.Benchmarks/`
+## 2026-05-01 — Production Deployment/Release Readiness Assessment
 
-## Secrets & Credentials
-- NUGET_API_KEY — GitHub secret, never logged or exposed
-- No database credentials needed for Picea Core
+### Verdict Snapshot
+- Status assessed as CONDITIONALLY READY for package publishing, NOT READY for full production deployment operations.
 
-## Gotchas & Learnings
-*None yet — environment-specific issues, surprising CI behaviors, workarounds.*
+### Key Findings
+- CI quality gates exist for build, tests, format, SCA, CodeQL, and benchmark regression.
+- Release automation is tied to push on main in `.github/workflows/cd.yml`, not to immutable version tags or staged promotion.
+- No containerization or deployment topology assets were found (`Dockerfile`, `.dockerignore`, compose files absent), so deployability to runtime environments is undefined from repo state.
+- Branch protection requirements are documented in `CONTRIBUTING.md` but cannot be verified as enforced from repository code alone.
+
+### Operational Risks Observed
+- No explicit staged rollout/smoke-test/promotion pipeline.
+- No artifact attestation/signing or provenance gate visible in workflows.
+- Security vulnerability gate parses command text for "critical|high" and may be brittle compared to machine-readable severity enforcement.
+
+### Recommended Next Actions (Shortest Path)
+- Split CI (PR gate) and Release (tag-triggered) workflows; publish only from signed `v*` tags.
+- Add deploy workflow with environment protection rules (`staging` -> smoke test -> manual approval -> `production`).
+- Add container build/scan/sign path and pin runtime artifact digest for promotion.
+- Align documented branch protections with actual required status checks and keep names stable.
+
+## 2026-05-01 — CI/CD Hardening Implementation (Minimal Safe Change Set)
+
+### Changes Applied
+- Added PR-blocking secrets scanning workflow at `.github/workflows/secrets-scan.yml` using Gitleaks on PRs to main (and pushes to main).
+- Added DAST workflow at `.github/workflows/dast.yml` with repository-context-aware behavior:
+- DAST behavior detail: Runs OWASP ZAP baseline only when both web attack surface and `DAST_TARGET_URL` are present.
+- DAST behavior detail: Otherwise runs an explicit guard job that documents why DAST is skipped and how to enable it safely.
+- Added container scan guard workflow at `.github/workflows/container-scan-guard.yml`:
+- Container guard detail: If container artifacts are absent, it passes and documents status.
+- Container guard detail: If container artifacts appear, it blocks merge unless `.github/workflows/container-scan.yml` exists.
+- Split CI and release concerns:
+- CI/release split detail: Kept `.github/workflows/cd.yml` as CI gate (restore, SCA, build, test).
+- CI/release split detail: Moved package pack/publish into new tag-driven `.github/workflows/release.yml` on `v*.*.*` tags.
+
+### Learnings
+- Tag-driven release publication reduces accidental package pushes and aligns better with immutable release intent.
+- Guard workflows are a low-risk bridge when the repository does not yet have a deployable web/container surface.
+- Keeping workflow names/triggers stable where possible avoids branch-protection drift while improving security posture.

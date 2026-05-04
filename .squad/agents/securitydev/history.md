@@ -1,101 +1,79 @@
-📌 Onboarded for **Picea Core** on 2026-03-30. Squad imported from Picea.Abies project; context refreshed.
-
 # Security Expert & Pentester — History
 
 ## About This File
-Project-specific security learnings, vulnerability patterns, dependency audits, and threat assessments. Harper owns security hardening.
+Project-specific security learnings, tool evaluations, vulnerability patterns, and pentest results. Read this before every session.
 
-## Security for Picea Core
-
-Picea is a foundational library with an extremely limited attack surface:
-- **No network I/O** — the kernel is pure functions
-- **No database** — no data persistence in the library itself
-- **No user input** — domain modeling is up to the user
-- **No reflection** (LINQ, JSON deserialization) in the hot path — uses static abstract members
-
-The library **encodes invariants in types**, not validation at runtime. This reduces certain categories of vulnerabilities.
-
-### Security Toolchain Status
-
-| Layer | Tool | Status | Last Used |
+## Security Toolchain Status
+| Layer | Tool | Status | Last Evaluated |
 |---|---|---|---|
-| **SAST** | CodeQL (GitHub) | ✅ Active | CI/CD on `main` |
-| **SCA** | `dotnet list package --outdated` | ✅ Manual | N/A (no dependencies) |
-| **SCA** | `dotnet nuget verify` | ✅ Available | On demand |
-| **Secrets** | GitHub Secret Scanning | ✅ Active | All branches |
-| **Supply Chain** | Package signing | ⏳ TODO | Milestone: v1.0+ |
+| SAST | Roslyn Analyzers | Not yet configured | |
+| SAST | Semgrep | Not yet configured | |
+| SCA | dotnet vuln scan | Not yet configured | |
+| SCA | Dependabot | Not yet configured | |
+| Secrets | Gitleaks | Not yet configured | |
+| DAST | OWASP ZAP | Not yet configured | |
+| Container | Trivy | Not yet configured | |
 
-### Dependency Audit
-
-**Current dependencies for `Picea` package:**
-- None (zero external NuGet dependencies)
-
-**Build/test dependencies:**
-- `TUnit` — testing framework (MIT/Apache 2.0 licensed)
-- `BenchmarkDotNet` — benchmarking (MIT licensed)
-- `.NET 10 SDK` — runtime (MIT licensed)
-
-All transitive dependencies are well-maintained Microsoft and community projects with active security monitoring.
-
-### Known Threats & Mitigations
-
-| Threat | Severity | Mitigation | Status |
-|--------|----------|-----------|--------|
-| Breaking API change (no SemVer enforcement) | Medium | Use Nerdbank.GitVersioning, tag releases, publish to NuGet only from `main` | ✅ In place |
-| Compromised NuGet API key | Critical | Key stored in GitHub secret, never logged, rotated regularly | ✅ In place |
-| Unsigned packages shipped | Medium | Plan to code-sign releases after v1.0 | ⏳ TODO |
-| Numeric/allocation overflow in Mealy machine | Low | Struct-based implementation, no unbounded allocations in hot path | ✅ By design |
-
-### Vulnerability Patterns (Picea-Specific)
-
-**Not applicable:**
-- SQL injection — no SQL in the library
-- XSS — no HTML rendering
-- Deserialization attacks — domain code owns deserialization, not the library
-- Timing attacks — pure functions are deterministic, no crypto in kernel
-- Integer overflow — users of constrained types guard their own ranges
-
-**Applicable & how we handle them:**
-
-1. **Type confusion** — Mitigated by discriminated unions (sum types). Illegal states unrepresentable.
-2. **State invariant violation** — Mitigated by smart constructors and immutable records
-3. **Effect execution bypassed** — Mitigated by returning effects as values; only the Interpreter can execute them
-
-### CodeQL Configuration
-
-Picea uses GitHub's default CodeQL C# queries:
-- Standard rules for C# code quality
-- Runs on `main` and `develop` branches post-push
-- Results reviewed before merge
-
-## False Positive Patterns
-*None yet — real findings and how to interpret them tracked here.*
+## Vulnerability Patterns Found
+*None yet — recurring vulnerability classes tracked here.*
 
 ## Scanner Rules Added/Tuned
 | Rule | Tool | Reason | Date |
 |---|---|---|---|
 | *None yet* | | | |
 
-## Pentest & Audit History
-*None yet — pentests or security audits and their results.*
+## False Positive Patterns
+*None yet — findings that look bad but aren't, so the team doesn't waste time.*
+
+## Tool Evaluations
+*None yet — document what was tested, what was chosen, and why.*
+
+## Pentest History
+| Date | Scope | Critical | High | Medium | Low | Report |
+|---|---|---|---|---|---|---|
+| *None yet* | | | | | | |
 
 ## Threat Models
-- **User threat model:** Domain code that uses Picea guards its own input validation
-- **Library threat model:** Picea kernel is pure; no injection vectors in the transition function
-- **Runtime threat model:** The Interpreter (not Picea) interprets effects; interpreter authors own security of effect execution
+*None yet — threat models for features/components tracked here.*
 
-## Proactive Hardening Roadmap
+## Threat Intelligence Log
+| Date | Threat/CVE | Affects | Severity | Mitigated | Regression Test | Scanner Rule Added |
+|---|---|---|---|---|---|---|
+| *None yet* | | | | | | |
 
-| Item | Milestone | Status |
+## Proactive Hardening
+| Date | Action | Result |
 |---|---|---|
-| Code signing releases | v1.0+ | ⏳ TODO |
-| SBOM generation | v1.0+ | ⏳ TODO |
-| Signed commits to main | End of Q2 2026 | ⏳ Proposed |
-| Dependency audit CI check | End of Q2 2026 | ⏳ Proposed |
-| Third-party security audit | Post v1.0 | ⏳ Future |
+| *None yet — dependency pruning, baseline scans, rule updates tracked here.* | | |
 
 ## Attack Surface Map
 *Not yet mapped — all public endpoints, auth flows, data flows, external integrations tracked here.*
 
 ## Security Standards
 *Refer to charter for baseline. Project-specific additions tracked here.*
+
+## Learnings
+
+### 2026-05-01 - Security governance artifacts implemented (threat model + regression mapping)
+- Added `docs/security/threat-model.md` as the living threat register with explicit trust boundaries, residual risk statements, and evidence links tied to real tests/workflow checks.
+- Added `docs/security/threat-to-tests.md` to map each current threat ID (`TM-001` through `TM-006`) to concrete regression evidence, including CI policy-as-code checks for dependency/CI security gates.
+- Captured one explicit uncovered area with concrete wording (automated secrets scanning workflow absent in current `.github/workflows` set) to avoid false assurance.
+- Updated `SECURITY.md` to require same-PR maintenance of threat governance artifacts whenever attack surface or controls change, preventing documentation drift.
+
+### 2026-05-01 - Production Security Readiness Assessment (evidence-based)
+- CI currently has SAST and SCA signals, but not the full security pipeline required by team principles: `codeql.yml` runs on PR/main, and SCA vulnerable package gates run in `pr-validation.yml` and `cd.yml`.
+- Required controls in `.squad/decisions.md` are not fully present in repo workflows today: no secrets scanning workflow, no DAST workflow, and no container image scanning workflow were found under `.github/workflows/`.
+- Threat-model policy requires `/docs/security/threat-model.md`, but that path does not exist in the repository. This is a direct production-readiness blocker under the squad's principles-enforcement rules.
+- Dependency posture signal is currently clean from project-level checks: `dotnet list package --vulnerable --include-transitive` reported no known vulnerable packages for `Picea`, `Picea.Tests`, `Picea.Benchmarks`, and `Picea.Templates`.
+- SECURITY.md claims NuGet audit runs in `all` mode, but `Directory.Build.props` currently sets `NuGetAudit` and `NuGetAuditLevel` without explicitly setting `NuGetAuditMode`; keep policy/docs and build config in sync to avoid assurance drift.
+
+### 2026-04-01 - PR Security Gating Audit (CI workflows)
+- Mandatory PR checks already present: gitleaks secrets scan via `secrets-scan.yml` (single source of truth); SCA high/critical gate in `pr-validation.yml`; Trivy high/critical gate in `trivy.yml`; CodeQL on PR in `codeql.yml`.
+- Duplicate PR SCA exists in `pr-validation.yml` and `cd.yml`; keep PR gate in `pr-validation.yml` as source of truth and remove PR-triggered SCA from `cd.yml` to reduce PR latency without lowering merge protection.
+- Heavy security jobs currently running on every PR: `zap-baseline.yml` (starts services + API + baseline + authenticated profile) and `template-security.yml` (packs templates, scaffolds, restores/builds, Semgrep, Trivy). These are better suited to push/main + nightly and path-filtered PR runs.
+- Non-negotiables that should stay PR-blocking: secrets detection, dependency vulnerability gate (HIGH/CRITICAL), and at least one code-level SAST signal (CodeQL or Semgrep) to catch injection/authz patterns before merge.
+- Scope-limiting opportunities without blind spots:
+	- Path-filter heavy scans: run template security only when template/framework/packaging inputs change.
+	- Path-filter ZAP only when API/auth/HTTP middleware/routing changes.
+	- Keep full-repo scans on scheduled/nightly as compensating control.
+	- For Semgrep PR optimization, diff-based targeting is acceptable only if nightly full scan remains enforced.

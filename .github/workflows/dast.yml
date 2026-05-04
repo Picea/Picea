@@ -1,0 +1,78 @@
+name: DAST
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Optional DAST target URL for manual scans"
+        required: false
+        type: string
+
+jobs:
+  detect-target:
+    name: Detect DAST Target
+    runs-on: ubuntu-latest
+    outputs:
+      has_web_surface: ${{ steps.detect.outputs.has_web_surface }}
+      target_url: ${{ steps.detect.outputs.target_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Detect web surface and target
+        id: detect
+        env:
+          INPUT_TARGET_URL: ${{ github.event.inputs.target_url || '' }}
+          FALLBACK_TARGET_URL: ${{ vars.DAST_TARGET_URL || secrets.DAST_TARGET_URL || '' }}
+        run: |
+          has_web_surface="false"
+
+          if rg -n "Microsoft\.AspNetCore|WebApplication\.CreateBuilder|MapGet\(|MapPost\(" --glob "**/*.cs" . >/dev/null 2>&1; then
+            has_web_surface="true"
+          fi
+
+          target_url=""
+          if [ -n "$INPUT_TARGET_URL" ]; then
+            target_url="$INPUT_TARGET_URL"
+          elif [ -n "$FALLBACK_TARGET_URL" ]; then
+            target_url="$FALLBACK_TARGET_URL"
+          fi
+
+          echo "has_web_surface=$has_web_surface" >> "$GITHUB_OUTPUT"
+          echo "target_url=$target_url" >> "$GITHUB_OUTPUT"
+
+  zap-baseline:
+    name: ZAP Baseline Scan
+    runs-on: ubuntu-latest
+    needs: detect-target
+    if: needs.detect-target.outputs.has_web_surface == 'true' && needs.detect-target.outputs.target_url != ''
+
+    steps:
+      - name: Run OWASP ZAP baseline
+        uses: zaproxy/action-baseline@v0.15.0
+        with:
+          target: ${{ needs.detect-target.outputs.target_url }}
+          fail_action: true
+
+  dast-guard:
+    name: DAST Guard
+    runs-on: ubuntu-latest
+    needs: detect-target
+    if: needs.detect-target.outputs.has_web_surface != 'true' || needs.detect-target.outputs.target_url == ''
+
+    steps:
+      - name: Explain why DAST scan was skipped
+        run: |
+          echo "ℹ️ DAST scan did not run for this repository context."
+          echo "- Web surface detected: ${{ needs.detect-target.outputs.has_web_surface }}"
+          echo "- DAST target configured: '${{ needs.detect-target.outputs.target_url }}'"
+          echo ""
+          echo "To enable active DAST in this workflow:"
+          echo "1. Introduce an HTTP attack surface in the repo (if not already present)."
+          echo "2. Configure repository variable DAST_TARGET_URL (or secret DAST_TARGET_URL) to a reachable non-production endpoint."
+          echo "3. Keep this workflow required in branch protection once DAST is active."

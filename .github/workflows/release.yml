@@ -1,17 +1,19 @@
-name: CD
+name: Release
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
 
 jobs:
-  build:
+  publish-nuget:
+    name: Publish NuGet Packages
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -50,3 +52,11 @@ jobs:
 
       - name: Test
         run: dotnet test --no-build --verbosity normal
+
+      - name: Pack
+        run: |
+          dotnet pack ./Picea/Picea.csproj --configuration Release --output ./nupkg
+          dotnet pack ./Picea.Templates/Picea.Templates.csproj --configuration Release --output ./nupkg
+
+      - name: Publish to NuGet
+        run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
