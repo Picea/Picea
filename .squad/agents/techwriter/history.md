@@ -30,3 +30,4 @@ Project-specific learnings from documentation work. Read this before every sessi
 
 - 2026-03-27: Scribe sessions should merge all files under `.squad/decisions/inbox/` into `.squad/decisions.md` in one pass, then delete merged inbox files to keep decision state canonical.
 - 2026-03-27: Orchestration and session logs should use the same ISO 8601 UTC timestamp to make agent activity correlation deterministic.
+- 2026-05-01: Decision inbox filenames are not guaranteed to be timestamped; Scribe merge should deduplicate by decision content/title and still clean merged markdown files while preserving `.gitkeep`.

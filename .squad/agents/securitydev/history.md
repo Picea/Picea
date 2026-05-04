@@ -54,6 +54,19 @@ Project-specific security learnings, tool evaluations, vulnerability patterns, a
 
 ## Learnings
 
+### 2026-05-01 - Security governance artifacts implemented (threat model + regression mapping)
+- Added `docs/security/threat-model.md` as the living threat register with explicit trust boundaries, residual risk statements, and evidence links tied to real tests/workflow checks.
+- Added `docs/security/threat-to-tests.md` to map each current threat ID (`TM-001` through `TM-006`) to concrete regression evidence, including CI policy-as-code checks for dependency/CI security gates.
+- Captured one explicit uncovered area with concrete wording (automated secrets scanning workflow absent in current `.github/workflows` set) to avoid false assurance.
+- Updated `SECURITY.md` to require same-PR maintenance of threat governance artifacts whenever attack surface or controls change, preventing documentation drift.
+
+### 2026-05-01 - Production Security Readiness Assessment (evidence-based)
+- CI currently has SAST and SCA signals, but not the full security pipeline required by team principles: `codeql.yml` runs on PR/main, and SCA vulnerable package gates run in `pr-validation.yml` and `cd.yml`.
+- Required controls in `.squad/decisions.md` are not fully present in repo workflows today: no secrets scanning workflow, no DAST workflow, and no container image scanning workflow were found under `.github/workflows/`.
+- Threat-model policy requires `/docs/security/threat-model.md`, but that path does not exist in the repository. This is a direct production-readiness blocker under the squad's principles-enforcement rules.
+- Dependency posture signal is currently clean from project-level checks: `dotnet list package --vulnerable --include-transitive` reported no known vulnerable packages for `Picea`, `Picea.Tests`, `Picea.Benchmarks`, and `Picea.Templates`.
+- SECURITY.md claims NuGet audit runs in `all` mode, but `Directory.Build.props` currently sets `NuGetAudit` and `NuGetAuditLevel` without explicitly setting `NuGetAuditMode`; keep policy/docs and build config in sync to avoid assurance drift.
+
 ### 2026-04-01 - PR Security Gating Audit (CI workflows)
 - Mandatory PR checks already present: gitleaks secrets scan via `secrets-scan.yml` (single source of truth); SCA high/critical gate in `pr-validation.yml`; Trivy high/critical gate in `trivy.yml`; CodeQL on PR in `codeql.yml`.
 - Duplicate PR SCA exists in `pr-validation.yml` and `cd.yml`; keep PR gate in `pr-validation.yml` as source of truth and remove PR-triggered SCA from `cd.yml` to reduce PR latency without lowering merge protection.

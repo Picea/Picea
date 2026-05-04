@@ -518,3 +518,14 @@ Verification performed on 2026-03-25: every open issue has exactly one priority 
 **Requested by:** Maurice Cornelius Gerardus Petrus Peters
 **What:** Treat production declaration as blocked until security threat-model artifact exists, warning discipline is enforced in CI, and release metadata/version policy are aligned.
 **Why:** Independent repository-level readiness review identified these as release-blocking governance gaps.
+
+### 2026-05-01T00:00:00Z: Benchmark PR trigger uses path-scoped coverage
+**By:** Performance Engineer
+**Requested by:** Maurice Cornelius Gerardus Petrus Peters
+**What:** Benchmark PR execution is path-scoped to `Picea/**`, `Picea.Benchmarks/**`, `Picea.Tests/**`, `.github/workflows/benchmarks.yml`, `Directory.Build.props`, `global.json`, and `Picea.sln`.
+**Why:** Improve pre-merge performance signal for relevant changes while reducing unnecessary benchmark queue pressure on unrelated PRs.
+
+### 2026-05-01T00:00:00Z: Security regression baseline is explicit despite missing threat-model file
+**By:** C# Dev
+**What:** Maintain deterministic security regression coverage in `Picea.Tests` for guard-denial no-side-effect behavior, hash-chain tamper detection, trusted-anchor mismatch rejection, and invalid hashing capability rejection, while treating missing `docs/security/threat-model.md` as a separate documentation/security ownership gap.
+**Why:** Preserve enforceable security behavior coverage with current repository artifacts without silently relaxing policy expectations.

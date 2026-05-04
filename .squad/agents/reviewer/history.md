@@ -22,6 +22,10 @@ This file captures project-specific learnings from the Reviewer's code reviews. 
 - 2026-03-26: One template build-test failure observed was infrastructure-related (Nerdbank.GitVersioning CompareFiles EndOfStreamException), not a functional assertion failure in the reviewed requirements.
 - 2026-03-27: Browser OTLP export fix is viable with protobuf exporter plus explicit export-on-end, but CDN dependency pinning must be complete (API + SDK + exporter) to avoid drift between partially pinned package versions.
 - 2026-03-27: For InteractiveServer bootstrap reviews, verify every new dynamic import against the server package's actually served static asset paths; adding a relative import under '/_abies/' without adding the target asset or a serving test creates a silent no-op regression.
+- 2026-05-01: Production-readiness assessment should treat missing security threat model artifact and missing strict warning gate as release blockers even when build/tests are green.
+- 2026-05-01: Security workflows can appear present but be operationally inactive; when a workflow references repository variables or inputs, verify the value is actually read and propagated in non-manual triggers.
+- 2026-05-01: When release publication is moved into a dedicated release workflow, security gates (for example vulnerable-package checks) must move with it or release-time protection regresses.
+- 2026-05-01: Threat model and threat-to-test mapping must be reconciled immediately with CI security-control changes, otherwise governance docs become internally contradictory in the same remediation pass.
 
 ## Review Statistics
 | Date | Scope | Verdict | 🔴 | ⚠️ | 💡 | Files |
