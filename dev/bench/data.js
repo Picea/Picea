@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775636154997,
+  "lastUpdate": 1777920777676,
   "repoUrl": "https://github.com/Picea/Picea",
   "entries": {
     "Picea Benchmarks": [
@@ -3180,6 +3180,150 @@ window.BENCHMARK_DATA = {
             "value": 1678.4719101123596,
             "unit": "ns",
             "range": "± 109.83159525213223"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "MCGPPeters@users.noreply.github.com",
+            "name": "Maurice CGP Peters",
+            "username": "MCGPPeters"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d9f009699889116c9f5ca96aba3a55c0c943b507",
+          "message": "fix(security): Address review findings and failing checks (#45)\n\n* chore: sync squad configuration and update automaton ADR wording\n\n* fix: enforce cancellation token ordering and document runtime initialization\n\n* chore(squad): merge production-readiness decisions\n\n* feat(security): harden production readiness gates\n\n* chore(squad): record hardening decisions and histories\n\n* fix: address PR review findings and failing checks\n\n* chore(squad): record review-fix decisions and learnings\n\n* perf: restore untraced dispatch hot path\n\n* style: fix security regression test formatting\n\n* perf: stabilize tiny benchmark measurements\n\n* perf: stabilize lean dispatch benchmark\n\n* perf: stabilize remaining microbenchmarks\n\n* perf: stabilize all microbenchmarks suite-wide",
+          "timestamp": "2026-05-04T20:51:56+02:00",
+          "tree_id": "ab7043acaee8b30b16ce657526188b8431d6d142",
+          "url": "https://github.com/Picea/Picea/commit/d9f009699889116c9f5ca96aba3a55c0c943b507"
+        },
+        "date": 1777920776998,
+        "tool": "benchmarkdotnet",
+        "benches": [
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Dispatch_Single",
+            "value": 337.1376033333333,
+            "unit": "ns",
+            "range": "± 3.648023369651552"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Dispatch_WithObserver",
+            "value": 320.8418923076923,
+            "unit": "ns",
+            "range": "± 1.2999655459931334"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Dispatch_Batch_100",
+            "value": 40734.666666666664,
+            "unit": "ns",
+            "range": "± 611.118844762819"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Dispatch_WithFeedback",
+            "value": 444.7859076923077,
+            "unit": "ns",
+            "range": "± 3.2263192649058365"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Dispatch_ComposedObserver",
+            "value": 354.2430066666667,
+            "unit": "ns",
+            "range": "± 2.751962095219295"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Dispatch_WithEventLogObserver",
+            "value": 480.42229230769226,
+            "unit": "ns",
+            "range": "± 1.5643895521158484"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Handle_Accept",
+            "value": 534.4145333333332,
+            "unit": "ns",
+            "range": "± 3.923802400672567"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Handle_Reject",
+            "value": 203.3915233333333,
+            "unit": "ns",
+            "range": "± 2.95287561333178"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Safe_NoTrack_Dispatch_Single",
+            "value": 341.5494399999999,
+            "unit": "ns",
+            "range": "± 2.4569442376368866"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Safe_NoTrack_Dispatch_WithFeedback",
+            "value": 955.1797416666665,
+            "unit": "ns",
+            "range": "± 2.3562315006106043"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Safe_NoTrack_Handle_Accept",
+            "value": 582.5635153846154,
+            "unit": "ns",
+            "range": "± 9.385255862152968"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Safe_NoTrack_Handle_Reject",
+            "value": 208.47948666666662,
+            "unit": "ns",
+            "range": "± 2.0813318410735637"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Lean_Dispatch_Single",
+            "value": 278.13825999999995,
+            "unit": "ns",
+            "range": "± 2.3303686231397633"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Lean_Dispatch_WithFeedback",
+            "value": 301.5523820895522,
+            "unit": "ns",
+            "range": "± 13.762085232303628"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Lean_Handle_Accept",
+            "value": 554.0229666666668,
+            "unit": "ns",
+            "range": "± 4.2679777248157995"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Lean_Handle_Reject",
+            "value": 147.03617857142856,
+            "unit": "ns",
+            "range": "± 0.8222708033980524"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Rec_Lean_Dispatch_Single",
+            "value": 201.4104466666667,
+            "unit": "ns",
+            "range": "± 1.8858522866206622"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Rec_Lean_Dispatch_WithFeedback",
+            "value": 735.9356357142857,
+            "unit": "ns",
+            "range": "± 2.901276069012797"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Rec_Lean_Handle_Accept",
+            "value": 433.9937714285715,
+            "unit": "ns",
+            "range": "± 2.287467736108259"
+          },
+          {
+            "name": "Picea.Benchmarks.PiceaBenchmarks.Rec_Lean_Handle_Reject",
+            "value": 134.06955416666668,
+            "unit": "ns",
+            "range": "± 3.3432733707081472"
           }
         ]
       }
