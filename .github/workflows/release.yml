@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  validate-release-source:
+    name: Validate Release Source
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag points at reviewed mainline tip
+        run: |
+          git fetch --no-tags origin main
+
+          TAG_SHA="$(git rev-list -n 1 "${GITHUB_REF_NAME}")"
+          MAIN_SHA="$(git rev-parse origin/main)"
+
+          if [ "$TAG_SHA" != "$MAIN_SHA" ]; then
+            echo "Release tags must point at the current origin/main HEAD."
+            echo "Tag ${GITHUB_REF_NAME} resolves to $TAG_SHA."
+            echo "origin/main resolves to $MAIN_SHA."
+            echo "Create release tags from the reviewed mainline tip only."
+            exit 1
+          fi
+
+  publish-nuget:
+    name: Publish NuGet Packages
+    runs-on: ubuntu-latest
+    needs: validate-release-source
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.103'
+
+      - name: Install GitVersioning
+        run: dotnet tool install --global nbgv --version 3.9.50
+
+      - name: Set version
+        id: version
+        run: |
+          VERSION=$(nbgv get-version -v NuGetPackageVersion)
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Package version: $VERSION"
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Check for vulnerable packages (SCA)
+        run: |
+          echo "🔍 Scanning for vulnerable packages..."
+          dotnet list package --vulnerable --include-transitive 2>&1 | tee vulnerability-report.txt
+
+          if grep -qi "critical\|high" vulnerability-report.txt; then
+            echo "❌ Critical or High severity vulnerabilities detected!"
+            exit 1
+          else
+            echo "✅ No critical or high severity vulnerabilities found"
+          fi
+
+      - name: Build
+        run: dotnet build --no-restore
+
+      - name: Test
+        run: dotnet test --no-build --verbosity normal
+
+      - name: Pack
+        run: |
+          dotnet pack ./Picea/Picea.csproj --configuration Release --output ./nupkg
+          dotnet pack ./Picea.Templates/Picea.Templates.csproj --configuration Release --output ./nupkg
+
+      - name: Publish to NuGet
+        run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate

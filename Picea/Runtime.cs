@@ -196,12 +196,16 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     /// <summary>
     /// Creates an automaton runtime from an initial state and pipeline capabilities.
     /// </summary>
+    /// <remarks>
+    /// This constructor is internal — public users should use <see cref="Start"/> to ensure proper initialization.
+    /// Tests and internal code may construct directly when setting up specific states.
+    /// </remarks>
     /// <param name="initialState">The initial state snapshot.</param>
     /// <param name="observer">Observer pipeline capability for transition side effects.</param>
     /// <param name="interpreter">Interpreter pipeline capability for feedback events.</param>
     /// <param name="threadSafe">Whether dispatch operations are serialized through a gate.</param>
     /// <param name="trackEvents">Whether dispatched events are stored in the runtime history.</param>
-    public AutomatonRuntime(
+    internal AutomatonRuntime(
         TState initialState,
         Observer<TState, TEvent, TEffect> observer,
         Interpreter<TEffect, TEvent> interpreter,
@@ -234,7 +238,7 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         bool trackEvents = true,
         CancellationToken cancellationToken = default)
     {
-        using var activity = AutomatonDiagnostics.Source.StartActivity("Automaton.Start");
+        using var activity = AutomatonDiagnostics.StartActivity("Automaton.Start");
         activity?.SetTag("automaton.type", _automatonTypeName);
         activity?.SetTag("automaton.state.type", _stateTypeName);
 
@@ -257,7 +261,10 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     /// </returns>
     public ValueTask<Result<Unit, PipelineError>> Dispatch(TEvent @event, CancellationToken cancellationToken = default)
     {
-        var activity = AutomatonDiagnostics.Source.StartActivity("Automaton.Dispatch");
+        if (!AutomatonDiagnostics.IsEnabled)
+            return DispatchWithoutTracing(@event, cancellationToken);
+
+        var activity = AutomatonDiagnostics.StartActivity("Automaton.Dispatch");
         activity?.SetTag("automaton.type", _automatonTypeName);
         activity?.SetTag("automaton.event.type", @event?.GetType().Name);
 
@@ -265,20 +272,97 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         {
             var waitTask = _gate.WaitAsync(cancellationToken);
             if (waitTask.IsCompletedSuccessfully)
-                return DispatchAfterGate(@event, cancellationToken, activity);
+                return DispatchAfterGate(@event, activity, cancellationToken);
 
-            return AwaitGateThenDispatch(waitTask, @event, cancellationToken, activity);
+            return AwaitGateThenDispatch(waitTask, @event, activity, cancellationToken);
         }
 
-        return DispatchUnserialized(@event, cancellationToken, activity);
+        return DispatchUnserialized(@event, activity, cancellationToken);
     }
 
-    private ValueTask<Result<Unit, PipelineError>> DispatchUnserialized(
-        TEvent @event, CancellationToken cancellationToken, Activity? activity)
+    private ValueTask<Result<Unit, PipelineError>> DispatchWithoutTracing(TEvent @event, CancellationToken cancellationToken)
+    {
+        if (_threadSafe)
+        {
+            var waitTask = _gate.WaitAsync(cancellationToken);
+            if (waitTask.IsCompletedSuccessfully)
+                return DispatchAfterGateWithoutTracing(@event, cancellationToken);
+
+            return AwaitGateThenDispatchWithoutTracing(waitTask, @event, cancellationToken);
+        }
+
+        return DispatchUnserializedWithoutTracing(@event, cancellationToken);
+    }
+
+    private ValueTask<Result<Unit, PipelineError>> DispatchUnserializedWithoutTracing(
+        TEvent @event, CancellationToken cancellationToken)
     {
         try
         {
-            var coreTask = DispatchCore(@event, cancellationToken);
+            return DispatchCore(@event, 0, cancellationToken);
+        }
+        catch
+        {
+            throw;
+        }
+    }
+
+    private ValueTask<Result<Unit, PipelineError>> DispatchAfterGateWithoutTracing(
+        TEvent @event, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var coreTask = DispatchCore(@event, 0, cancellationToken);
+            if (coreTask.IsCompletedSuccessfully)
+            {
+                _gate.Release();
+                return new ValueTask<Result<Unit, PipelineError>>(coreTask.Result);
+            }
+
+            return AwaitCoreThenReleaseWithoutTracing(coreTask);
+        }
+        catch
+        {
+            _gate.Release();
+            throw;
+        }
+    }
+
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    private async ValueTask<Result<Unit, PipelineError>> AwaitCoreThenReleaseWithoutTracing(
+        ValueTask<Result<Unit, PipelineError>> coreTask)
+    {
+        try
+        {
+            return await coreTask.ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    private async ValueTask<Result<Unit, PipelineError>> AwaitGateThenDispatchWithoutTracing(
+        Task waitTask, TEvent @event, CancellationToken cancellationToken)
+    {
+        await waitTask.ConfigureAwait(false);
+        try
+        {
+            return await DispatchCore(@event, 0, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private ValueTask<Result<Unit, PipelineError>> DispatchUnserialized(
+        TEvent @event, Activity? activity, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var coreTask = DispatchCore(@event, 0, cancellationToken);
             if (coreTask.IsCompletedSuccessfully)
             {
                 var result = coreTask.Result;
@@ -328,11 +412,11 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     }
 
     private ValueTask<Result<Unit, PipelineError>> DispatchAfterGate(
-        TEvent @event, CancellationToken cancellationToken, Activity? activity)
+        TEvent @event, Activity? activity, CancellationToken cancellationToken)
     {
         try
         {
-            var coreTask = DispatchCore(@event, cancellationToken);
+            var coreTask = DispatchCore(@event, 0, cancellationToken);
             if (coreTask.IsCompletedSuccessfully)
             {
                 var result = coreTask.Result;
@@ -389,13 +473,13 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
 
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     private async ValueTask<Result<Unit, PipelineError>> AwaitGateThenDispatch(
-        Task waitTask, TEvent @event, CancellationToken cancellationToken, Activity? activity)
+        Task waitTask, TEvent @event, Activity? activity, CancellationToken cancellationToken)
     {
         using var _ = activity;
         await waitTask.ConfigureAwait(false);
         try
         {
-            var result = await DispatchCore(@event, cancellationToken).ConfigureAwait(false);
+            var result = await DispatchCore(@event, 0, cancellationToken).ConfigureAwait(false);
             if (result.IsOk)
                 activity?.SetStatus(ActivityStatusCode.Ok);
             else
@@ -424,7 +508,7 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     /// <returns>A task that completes when effect processing finishes.</returns>
     public ValueTask InterpretEffect(TEffect effect, CancellationToken cancellationToken = default)
     {
-        var activity = AutomatonDiagnostics.Source.StartActivity("Automaton.InterpretEffect");
+        var activity = AutomatonDiagnostics.StartActivity("Automaton.InterpretEffect");
         activity?.SetTag("automaton.type", _automatonTypeName);
         activity?.SetTag("automaton.effect.type", effect?.GetType().Name);
 
@@ -432,19 +516,19 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         {
             var waitTask = _gate.WaitAsync(cancellationToken);
             if (waitTask.IsCompletedSuccessfully)
-                return InterpretEffectAfterGate(effect, cancellationToken, activity);
+                return InterpretEffectAfterGate(effect, activity, cancellationToken);
 
-            return AwaitGateThenInterpret(waitTask, effect, cancellationToken, activity);
+            return AwaitGateThenInterpret(waitTask, effect, activity, cancellationToken);
         }
 
-        return InterpretEffectUnserialized(effect, cancellationToken, activity);
+        return InterpretEffectUnserialized(effect, activity, cancellationToken);
     }
 
-    private ValueTask InterpretEffectUnserialized(TEffect effect, CancellationToken cancellationToken, Activity? activity)
+    private ValueTask InterpretEffectUnserialized(TEffect effect, Activity? activity, CancellationToken cancellationToken)
     {
         try
         {
-            var coreTask = InterpretEffectCore(effect, cancellationToken);
+            var coreTask = InterpretEffectCore(effect, 0, cancellationToken);
             if (coreTask.IsCompletedSuccessfully)
             {
                 activity?.SetStatus(ActivityStatusCode.Ok);
@@ -478,11 +562,11 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         }
     }
 
-    private ValueTask InterpretEffectAfterGate(TEffect effect, CancellationToken cancellationToken, Activity? activity)
+    private ValueTask InterpretEffectAfterGate(TEffect effect, Activity? activity, CancellationToken cancellationToken)
     {
         try
         {
-            var coreTask = InterpretEffectCore(effect, cancellationToken);
+            var coreTask = InterpretEffectCore(effect, 0, cancellationToken);
             if (coreTask.IsCompletedSuccessfully)
             {
                 activity?.SetStatus(ActivityStatusCode.Ok);
@@ -524,13 +608,13 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
 
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder))]
     private async ValueTask AwaitGateThenInterpret(
-        Task waitTask, TEffect effect, CancellationToken cancellationToken, Activity? activity)
+        Task waitTask, TEffect effect, Activity? activity, CancellationToken cancellationToken)
     {
         using var _ = activity;
         await waitTask.ConfigureAwait(false);
         try
         {
-            await InterpretEffectCore(effect, cancellationToken).ConfigureAwait(false);
+            await InterpretEffectCore(effect, 0, cancellationToken).ConfigureAwait(false);
             activity?.SetStatus(ActivityStatusCode.Ok);
         }
         catch (Exception ex)
@@ -573,11 +657,11 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     public void Dispose() => _gate.Dispose();
 
     internal ValueTask<Result<Unit, PipelineError>> DispatchUnlocked(
-        TEvent @event, CancellationToken cancellationToken, int depth = 0)
-        => DispatchCore(@event, cancellationToken, depth);
+        TEvent @event, int depth = 0, CancellationToken cancellationToken = default)
+        => DispatchCore(@event, depth, cancellationToken);
 
     private ValueTask<Result<Unit, PipelineError>> DispatchCore(
-        TEvent @event, CancellationToken cancellationToken, int depth = 0)
+        TEvent @event, int depth = 0, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -600,26 +684,26 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
             if (observerResult.IsErr)
                 return new ValueTask<Result<Unit, PipelineError>>(observerResult);
 
-            return InterpretEffectCoreWithResult(effect, cancellationToken, depth);
+            return InterpretEffectCoreWithResult(effect, depth, cancellationToken);
         }
 
-        return AwaitObserverThenInterpret(observerTask, effect, cancellationToken, depth);
+        return AwaitObserverThenInterpret(observerTask, effect, depth, cancellationToken);
     }
 
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     private async ValueTask<Result<Unit, PipelineError>> AwaitObserverThenInterpret(
         ValueTask<Result<Unit, PipelineError>> observerTask, TEffect effect,
-        CancellationToken cancellationToken, int depth)
+        int depth, CancellationToken cancellationToken)
     {
         var observerResult = await observerTask.ConfigureAwait(false);
         if (observerResult.IsErr)
             return observerResult;
 
-        return await InterpretEffectCoreWithResult(effect, cancellationToken, depth).ConfigureAwait(false);
+        return await InterpretEffectCoreWithResult(effect, depth, cancellationToken).ConfigureAwait(false);
     }
 
     private ValueTask<Result<Unit, PipelineError>> InterpretEffectCoreWithResult(
-        TEffect effect, CancellationToken cancellationToken, int depth = 0)
+        TEffect effect, int depth = 0, CancellationToken cancellationToken = default)
     {
         if (depth > MaxFeedbackDepth)
             throw new InvalidOperationException(
@@ -644,17 +728,17 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
 
             return DispatchFeedbackEventsWithResult(
                 ContractGuards.RequireNonNullArray(feedbackEvents),
-                cancellationToken,
-                depth);
+                depth,
+                cancellationToken);
         }
 
-        return AwaitInterpreterThenDispatchWithResult(interpreterTask, cancellationToken, depth);
+        return AwaitInterpreterThenDispatchWithResult(interpreterTask, depth, cancellationToken);
     }
 
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     private async ValueTask<Result<Unit, PipelineError>> AwaitInterpreterThenDispatchWithResult(
         ValueTask<Result<TEvent[], PipelineError>> interpreterTask,
-        CancellationToken cancellationToken, int depth)
+        int depth, CancellationToken cancellationToken)
     {
         var interpreterResult = await interpreterTask.ConfigureAwait(false);
         if (interpreterResult.IsErr)
@@ -667,31 +751,33 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
 
         return await DispatchFeedbackEventsWithResult(
                 ContractGuards.RequireNonNullArray(feedbackEvents),
-                cancellationToken,
-                depth)
+                depth,
+                cancellationToken)
             .ConfigureAwait(false);
     }
 
     private ValueTask<Result<Unit, PipelineError>> DispatchFeedbackEventsWithResult(
         TEvent[] feedbackEvents,
-        CancellationToken cancellationToken, int depth)
+        int depth,
+        CancellationToken cancellationToken = default)
     {
         feedbackEvents = ContractGuards.RequireNonNullArray(feedbackEvents);
 
         if (feedbackEvents.Length == 0)
             return PipelineResult.Ok;
 
-        return DispatchFeedbackEventsWithResultAsync(feedbackEvents, cancellationToken, depth);
+        return DispatchFeedbackEventsWithResultAsync(feedbackEvents, depth, cancellationToken);
     }
 
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     private async ValueTask<Result<Unit, PipelineError>> DispatchFeedbackEventsWithResultAsync(
         TEvent[] feedbackEvents,
-        CancellationToken cancellationToken, int depth)
+        int depth,
+        CancellationToken cancellationToken = default)
     {
         for (var i = 0; i < feedbackEvents.Length; i++)
         {
-            var result = await DispatchCore(feedbackEvents[i], cancellationToken, depth + 1)
+            var result = await DispatchCore(feedbackEvents[i], depth + 1, cancellationToken)
                 .ConfigureAwait(false);
             if (result.IsErr)
                 return result;
@@ -700,9 +786,9 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         return Result<Unit, PipelineError>.Ok(Unit.Value);
     }
 
-    private ValueTask InterpretEffectCore(TEffect effect, CancellationToken cancellationToken, int depth = 0)
+    private ValueTask InterpretEffectCore(TEffect effect, int depth = 0, CancellationToken cancellationToken = default)
     {
-        var resultTask = InterpretEffectCoreWithResult(effect, cancellationToken, depth);
+        var resultTask = InterpretEffectCoreWithResult(effect, depth, cancellationToken);
         if (resultTask.IsCompletedSuccessfully)
         {
             var result = resultTask.Result;

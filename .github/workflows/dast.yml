@@ -1,0 +1,43 @@
+name: DAST
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 4 * * 1'
+
+jobs:
+  dast-guard:
+    name: DAST Coverage Guard
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Detect HTTP attack surface
+        id: detect
+        run: |
+          has_web_surface="false"
+
+          if rg -n "Microsoft\.AspNetCore|WebApplication\.CreateBuilder|Map(Get|Post|Put|Delete|Patch)\(|ControllerBase" --glob "**/*.cs" . >/dev/null 2>&1; then
+            has_web_surface="true"
+          fi
+
+          echo "has_web_surface=$has_web_surface" >> "$GITHUB_OUTPUT"
+
+      - name: Confirm no runnable web surface is present
+        if: steps.detect.outputs.has_web_surface != 'true'
+        run: |
+          echo "No runnable HTTP attack surface was detected in the checked-out code."
+          echo "This workflow is a truthful guard only; no dynamic scan was run."
+
+      - name: Fail until DAST exercises the checked-out application
+        if: steps.detect.outputs.has_web_surface == 'true'
+        run: |
+          echo "HTTP attack surface detected in the checked-out code."
+          echo "This repository now requires a DAST workflow that starts the code under review in CI."
+          echo "Scanning an external URL is not accepted as PR DAST coverage because it does not prove the reviewed code was tested."
+          exit 1
