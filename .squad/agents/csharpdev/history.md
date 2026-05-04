@@ -6,7 +6,7 @@ Project-specific learnings from C#/.NET functional domain modeling work. Read th
 ## Platform
 - **.NET 10** (LTS), C# 14
 - **TUnit** for all testing
-- **Picea.Abies** namespace root
+- **Picea** namespace root
 
 ## Functional Patterns Established
 *None yet — Result/Option usage, workflow signatures, capability patterns tracked here.*
@@ -38,6 +38,8 @@ Project-specific learnings from C#/.NET functional domain modeling work. Read th
 
 ## Learnings
 - 2026-05-01: Security regression tests in `Picea.Tests` should assert **no additional observer/interpreter dispatch during denied guarded commands** rather than absolute zero interpreter calls, because guarded runtime startup may invoke the interpreter once for initialization effects before command handling begins.
+- 2026-05-04: The dispatch hot path should not call `ActivitySource.StartActivity` unless listeners are present. Guarding tracing with `HasListeners()` recovered the local no-op dispatch benchmark from ~1546 ns to ~957 ns without changing span behavior when listeners are registered.
+- 2026-05-04: `AutomatonRuntime` direct construction is available only to friend assemblies declared in `Picea.csproj` (`Picea.Tests`, `Picea.Benchmarks`), not to arbitrary consumer test projects. Public guidance should describe that boundary explicitly.
 - 2026-05-01: Hash-chain security regression coverage benefits from explicitly separating (1) internal chain consistency (`VerifyChain`) and (2) trusted-anchor validation (`VerifyAnchor`) so forked/mismatched-anchor scenarios are caught even when entry linkage is otherwise valid.
 - 2026-04-04: Program-level decider validation can now express user-facing failures via `Result<Message[], Message>.Err(...)`; runtime should dispatch `decision.Error` through the same transition pipeline to preserve UX consistency (e.g., Conduit form errors still land in `HandleApiError` without fabricating `Ok(ApiError)` events).
 - 2026-04-04: Completed full strict decider migration in Abies runtime and Program contract surface. `Program<TModel, TArgument>` no longer supplies default `Decide`/`IsTerminal` shims. `Runtime.Dispatch` now runs decider-first command handling (`IsTerminal` guard + `Decide` + event dispatch) under a command-level gate, removing the old command-as-event compatibility path. Validation matrix passed for core/builds/server/tests/templates/conduit unit tests; Conduit E2E has one remaining failure (`DeleteArticle_AsAuthor_ShouldNavigateToHome`, `.article-page` visibility timeout).

@@ -65,3 +65,19 @@ Pipeline decisions, container configs, deployment patterns, and CI optimization.
 - Tag-driven release publication reduces accidental package pushes and aligns better with immutable release intent.
 - Guard workflows are a low-risk bridge when the repository does not yet have a deployable web/container surface.
 - Keeping workflow names/triggers stable where possible avoids branch-protection drift while improving security posture.
+
+## 2026-05-04 — Workflow Truthfulness And Release Provenance Hardening
+
+### Workflow Changes
+
+- Removed the PR title uppercase subject rule from `.github/workflows/pr-validation.yml` to align the check with Conventional Commits usage documented elsewhere in the repo.
+- Replaced `gitleaks/gitleaks-action@v2` in `.github/workflows/secrets-scan.yml` with a pinned OSS Gitleaks CLI install-and-run path so the secrets gate remains enforceable without org licensing.
+- Hardened `.github/workflows/release.yml` by removing manual dispatch and blocking package publication unless the pushed `v*.*.*` tag resolves to the current `origin/main` HEAD.
+- Reduced `.github/workflows/dast.yml` to a truthful readiness guard:
+- DAST guard detail: If no HTTP attack surface is present in the checked-out code, the job passes and explicitly states that no dynamic scan ran.
+- DAST guard detail: If an HTTP attack surface appears, the job fails until CI is updated to start and scan the checked-out application itself.
+
+### Operational Learnings
+
+- Release provenance should be enforced in workflow code, not left to operator discipline or trigger choice alone.
+- External URL scans are not valid PR DAST evidence unless the workflow can prove they exercised the code under review.

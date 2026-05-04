@@ -15,8 +15,8 @@ Every deviation from an established principle requires explicit user approval be
 ### .NET 10 (LTS) with C# 14
 Target `net10.0`. Use the latest stable C# features. Always prefer new language features and APIs. Replace deprecated APIs with recommended alternatives.
 
-### Picea.Abies Namespace Root
-`Picea.Abies` is the root namespace for the project ecosystem. All code lives under it.
+### Picea Namespace Root
+`Picea` is the root namespace for this project. All code in this repository lives under it.
 
 ---
 
@@ -54,7 +54,7 @@ When integrating with external systems, map external DTOs into internal domain t
 Never suffix async method names with `Async`.
 
 ### Namespaces Are Bounded Contexts
-`Picea.Abies.Commanding.Handler` not `Picea.Abies.CommandHandler`. `Picea.Abies.Demos.Subscriptions` not `Picea.Abies.SubscriptionDemo`. Depth over width. Folder structure mirrors namespace declarations exactly.
+`Picea.Commanding.Handler` not `Picea.CommandHandler`. `Picea.Commanding.Pipeline` not `Picea.CommandPipeline`. Depth over width. Folder structure mirrors namespace declarations exactly.
 
 ### Domain Terms Only
 No `Manager`, `Helper`, `Util`, `Service` in the domain layer. Use ubiquitous language names that match the business domain. Modules as `static class ...Module`.
