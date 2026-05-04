@@ -1,0 +1,42 @@
+name: Container Scan Guard
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+
+jobs:
+  enforce-container-scan-presence:
+    name: Enforce Container Scan Workflow Presence
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Detect container artifacts
+        id: detect
+        run: |
+          has_container_artifacts="false"
+
+          if rg --files | rg -n "(^|/)Dockerfile$|\.dockerignore$|docker-compose|compose\.ya?ml" >/dev/null 2>&1; then
+            has_container_artifacts="true"
+          fi
+
+          echo "has_container_artifacts=$has_container_artifacts" >> "$GITHUB_OUTPUT"
+
+      - name: "Guard: require dedicated container scan workflow when container artifacts exist"
+        if: steps.detect.outputs.has_container_artifacts == 'true'
+        run: |
+          if [ ! -f ".github/workflows/container-scan.yml" ]; then
+            echo "❌ Container artifacts detected, but .github/workflows/container-scan.yml is missing."
+            echo "Add a dedicated container scan workflow (for example Trivy) before merging."
+            exit 1
+          fi
+
+          echo "✅ Container scan workflow is present."
+
+      - name: No container artifacts found
+        if: steps.detect.outputs.has_container_artifacts != 'true'
+        run: echo "✅ No container artifacts detected; container scan workflow not required yet."

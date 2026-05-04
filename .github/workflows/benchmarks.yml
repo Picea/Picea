@@ -11,6 +11,16 @@
 name: Benchmarks
 
 on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Picea/**'
+      - 'Picea.Benchmarks/**'
+      - 'Picea.Tests/**'
+      - '.github/workflows/benchmarks.yml'
+      - 'Directory.Build.props'
+      - 'global.json'
+      - 'Picea.sln'
   push:
     branches: [ main ]
   workflow_dispatch:
@@ -51,12 +61,13 @@ jobs:
           tool: 'benchmarkdotnet'
           output-file-path: BenchmarkDotNet.Artifacts/results/Picea.Benchmarks.PiceaBenchmarks-report-full-compressed.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
+          auto-push: ${{ github.event_name == 'push' }}
           # ── Regression detection ────────────────────────────
-          # Alert at 150%, fail at 150% (any benchmark 50% slower → red build)
-          alert-threshold: '150%'
+          # Alert at 105%, fail at 105% (any benchmark >5% slower → red build)
+          # Math: regression_ratio = current / baseline; fail when regression_ratio > 1.05
+          alert-threshold: '105%'
           fail-on-alert: true
-          comment-on-alert: true
+          comment-on-alert: ${{ github.event_name == 'push' }}
           alert-comment-cc-users: '@MCGPPeters'
           # ── Job summary in PR / commit view ─────────────────
           summary-always: true
