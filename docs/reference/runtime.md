@@ -97,7 +97,7 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     where TAutomaton : Automaton<TState, TEvent, TEffect, TParameters>
 ```
 
-> ⚠️ **Constructor is `internal`** — Use [`Start`](#start) to create a runtime. The factory ensures proper initialization. Only friend assemblies declared via `InternalsVisibleTo` may construct directly; ordinary consumer applications and test projects cannot.
+> ⚠️ **Constructor is `internal`** — Use [`Start`](#start) to create a runtime. The factory ensures proper initialization. Only friend assemblies declared via `InternalsVisibleTo` may construct directly; ordinary consumer applications cannot, and test projects can only do so if explicitly granted friend access.
 
 ### Properties
 

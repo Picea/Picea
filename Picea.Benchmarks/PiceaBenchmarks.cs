@@ -60,12 +60,15 @@ public class PiceaBenchmarks
     private static readonly RecBenchCommand.Add _recAcceptCommand = new(1);
     private static readonly RecBenchCommand.Reject _recRejectCommand = new();
 
-    private static async ValueTask<TResult> RunRepeated<TResult>(Func<ValueTask<TResult>> operation)
+    private static async ValueTask<TResult> RunRepeated<TRuntime, TInput, TResult>(
+        TRuntime runtime,
+        TInput input,
+        Func<TRuntime, TInput, ValueTask<TResult>> invoke)
     {
         TResult result = default!;
 
         for (var i = 0; i < MicroOperationsPerInvoke; i++)
-            result = await operation().ConfigureAwait(false);
+            result = await invoke(runtime, input).ConfigureAwait(false);
 
         return result;
     }
@@ -148,11 +151,11 @@ public class PiceaBenchmarks
     // these sub-microsecond measurements and creates false regressions against the 5% gate.
     [Benchmark(Description = "Dispatch (no-op observer, no-op interpreter)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<Unit, PipelineError>> Dispatch_Single() =>
-        RunRepeated(() => _runtimeNoOp.Dispatch(_singleEvent));
+        RunRepeated(_runtimeNoOp, _singleEvent, static (r, e) => r.Dispatch(e));
 
     [Benchmark(Description = "Dispatch (observer touches state/event/effect)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<Unit, PipelineError>> Dispatch_WithObserver() =>
-        RunRepeated(() => _runtimeObserver.Dispatch(_singleEvent));
+        RunRepeated(_runtimeObserver, _singleEvent, static (r, e) => r.Dispatch(e));
 
     [Benchmark(Description = "Dispatch × 100 (batch, no-op)")]
     public async Task Dispatch_Batch_100()
@@ -163,77 +166,77 @@ public class PiceaBenchmarks
 
     [Benchmark(Description = "Dispatch with interpreter feedback (1 level)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<Unit, PipelineError>> Dispatch_WithFeedback() =>
-        RunRepeated(() => _runtimeFeedback.Dispatch(_effectEvent));
+        RunRepeated(_runtimeFeedback, _effectEvent, static (r, e) => r.Dispatch(e));
 
     [Benchmark(Description = "Dispatch with composed observer (Then)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<Unit, PipelineError>> Dispatch_ComposedObserver() =>
-        RunRepeated(() => _runtimeComposed.Dispatch(_singleEvent));
+        RunRepeated(_runtimeComposed, _singleEvent, static (r, e) => r.Dispatch(e));
 
     [Benchmark(Description = "Dispatch with EventLog observer append", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<Unit, PipelineError>> Dispatch_WithEventLogObserver() =>
-        RunRepeated(() => _runtimeEventLog.Dispatch(_singleEvent));
+        RunRepeated(_runtimeEventLog, _singleEvent, static (r, e) => r.Dispatch(e));
 
     // ── Decider benchmarks ───────────────────────────────────────────
 
     [Benchmark(Description = "Handle — accept (1 event dispatched)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<BenchState, BenchError>> Handle_Accept() =>
-        RunRepeated(() => _decider.Handle(_acceptCommand));
+        RunRepeated(_decider, _acceptCommand, static (r, c) => r.Handle(c));
 
     [Benchmark(Description = "Handle — reject (0 events, error returned)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<BenchState, BenchError>> Handle_Reject() =>
-        RunRepeated(() => _decider.Handle(_rejectCommand));
+        RunRepeated(_decider, _rejectCommand, static (r, c) => r.Handle(c));
 
     // ── Safe-no-track benchmarks (threadSafe=true, trackEvents=false) ─
 
     [Benchmark(Description = "Safe Dispatch (no tracking)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<Unit, PipelineError>> Safe_NoTrack_Dispatch_Single() =>
-        RunRepeated(() => _safeNoTrackNoOp.Dispatch(_singleEvent));
+        RunRepeated(_safeNoTrackNoOp, _singleEvent, static (r, e) => r.Dispatch(e));
 
     [Benchmark(Description = "Safe Dispatch with feedback (no tracking)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<Unit, PipelineError>> Safe_NoTrack_Dispatch_WithFeedback() =>
-        RunRepeated(() => _safeNoTrackFeedback.Dispatch(_effectEvent));
+        RunRepeated(_safeNoTrackFeedback, _effectEvent, static (r, e) => r.Dispatch(e));
 
     [Benchmark(Description = "Safe Handle — accept (no tracking)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<BenchState, BenchError>> Safe_NoTrack_Handle_Accept() =>
-        RunRepeated(() => _safeNoTrackDecider.Handle(_acceptCommand));
+        RunRepeated(_safeNoTrackDecider, _acceptCommand, static (r, c) => r.Handle(c));
 
     [Benchmark(Description = "Safe Handle — reject (no tracking)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<BenchState, BenchError>> Safe_NoTrack_Handle_Reject() =>
-        RunRepeated(() => _safeNoTrackDecider.Handle(_rejectCommand));
+        RunRepeated(_safeNoTrackDecider, _rejectCommand, static (r, c) => r.Handle(c));
 
     // ── Lean benchmarks (threadSafe=false, trackEvents=false) ────────
 
     [Benchmark(Description = "Lean Dispatch (no-op, unserialized, no tracking)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<Unit, PipelineError>> Lean_Dispatch_Single() =>
-        RunRepeated(() => _leanNoOp.Dispatch(_singleEvent));
+        RunRepeated(_leanNoOp, _singleEvent, static (r, e) => r.Dispatch(e));
 
     [Benchmark(Description = "Lean Dispatch with feedback (unserialized, no tracking)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<Unit, PipelineError>> Lean_Dispatch_WithFeedback() =>
-        RunRepeated(() => _leanFeedback.Dispatch(_effectEvent));
+        RunRepeated(_leanFeedback, _effectEvent, static (r, e) => r.Dispatch(e));
 
     [Benchmark(Description = "Lean Handle — accept (unserialized, no tracking)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<BenchState, BenchError>> Lean_Handle_Accept() =>
-        RunRepeated(() => _leanDecider.Handle(_acceptCommand));
+        RunRepeated(_leanDecider, _acceptCommand, static (r, c) => r.Handle(c));
 
     [Benchmark(Description = "Lean Handle — reject (unserialized, no tracking)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<BenchState, BenchError>> Lean_Handle_Reject() =>
-        RunRepeated(() => _leanDecider.Handle(_rejectCommand));
+        RunRepeated(_leanDecider, _rejectCommand, static (r, c) => r.Handle(c));
 
     // ── Record-based lean benchmarks (abstract record DU, no boxing) ─
 
     [Benchmark(Description = "Lean Dispatch (record-based, zero-alloc)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<Unit, PipelineError>> Rec_Lean_Dispatch_Single() =>
-        RunRepeated(() => _recLeanNoOp.Dispatch(_recSingleEvent));
+        RunRepeated(_recLeanNoOp, _recSingleEvent, static (r, e) => r.Dispatch(e));
 
     [Benchmark(Description = "Lean Dispatch with feedback (record-based)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<Unit, PipelineError>> Rec_Lean_Dispatch_WithFeedback() =>
-        RunRepeated(() => _recLeanFeedback.Dispatch(_recEffectEvent));
+        RunRepeated(_recLeanFeedback, _recEffectEvent, static (r, e) => r.Dispatch(e));
 
     [Benchmark(Description = "Lean Handle — accept (record-based)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<RecBenchState, RecBenchError>> Rec_Lean_Handle_Accept() =>
-        RunRepeated(() => _recLeanDecider.Handle(_recAcceptCommand));
+        RunRepeated(_recLeanDecider, _recAcceptCommand, static (r, c) => r.Handle(c));
 
     [Benchmark(Description = "Lean Handle — reject (record-based, zero-alloc)", OperationsPerInvoke = MicroOperationsPerInvoke)]
     public ValueTask<Result<RecBenchState, RecBenchError>> Rec_Lean_Handle_Reject() =>
-        RunRepeated(() => _recLeanDecider.Handle(_recRejectCommand));
+        RunRepeated(_recLeanDecider, _recRejectCommand, static (r, c) => r.Handle(c));
 }
