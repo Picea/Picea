@@ -131,13 +131,26 @@ public class PiceaBenchmarks
 
     // ── Dispatch benchmarks ──────────────────────────────────────────
 
-    [Benchmark(Description = "Dispatch (no-op observer, no-op interpreter)")]
-    public ValueTask<Result<Unit, PipelineError>> Dispatch_Single()
-        => _runtimeNoOp.Dispatch(_singleEvent);
+    // [OperationsPerInvoke] is required here because this is a sub-microsecond
+    // hot path on CI runners and timer granularity otherwise dominates the
+    // measurement enough to create false >5% regressions.
+    [Benchmark(Description = "Dispatch (no-op observer, no-op interpreter)", OperationsPerInvoke = 10_000)]
+    public async ValueTask<Result<Unit, PipelineError>> Dispatch_Single()
+    {
+        Result<Unit, PipelineError> result = default;
+        for (var i = 0; i < 10_000; i++)
+            result = await _runtimeNoOp.Dispatch(_singleEvent);
+        return result;
+    }
 
-    [Benchmark(Description = "Dispatch (observer touches state/event/effect)")]
-    public ValueTask<Result<Unit, PipelineError>> Dispatch_WithObserver()
-        => _runtimeObserver.Dispatch(_singleEvent);
+    [Benchmark(Description = "Dispatch (observer touches state/event/effect)", OperationsPerInvoke = 10_000)]
+    public async ValueTask<Result<Unit, PipelineError>> Dispatch_WithObserver()
+    {
+        Result<Unit, PipelineError> result = default;
+        for (var i = 0; i < 10_000; i++)
+            result = await _runtimeObserver.Dispatch(_singleEvent);
+        return result;
+    }
 
     [Benchmark(Description = "Dispatch × 100 (batch, no-op)")]
     public async Task Dispatch_Batch_100()
@@ -193,9 +206,14 @@ public class PiceaBenchmarks
     public ValueTask<Result<BenchState, BenchError>> Safe_NoTrack_Handle_Accept()
         => _safeNoTrackDecider.Handle(_acceptCommand);
 
-    [Benchmark(Description = "Safe Handle — reject (no tracking)")]
-    public ValueTask<Result<BenchState, BenchError>> Safe_NoTrack_Handle_Reject()
-        => _safeNoTrackDecider.Handle(_rejectCommand);
+    [Benchmark(Description = "Safe Handle — reject (no tracking)", OperationsPerInvoke = 10_000)]
+    public async ValueTask<Result<BenchState, BenchError>> Safe_NoTrack_Handle_Reject()
+    {
+        Result<BenchState, BenchError> result = default;
+        for (var i = 0; i < 10_000; i++)
+            result = await _safeNoTrackDecider.Handle(_rejectCommand);
+        return result;
+    }
 
     // ── Lean benchmarks (threadSafe=false, trackEvents=false) ────────
 
@@ -226,9 +244,14 @@ public class PiceaBenchmarks
 
     // ── Record-based lean benchmarks (abstract record DU, no boxing) ─
 
-    [Benchmark(Description = "Lean Dispatch (record-based, zero-alloc)")]
-    public ValueTask<Result<Unit, PipelineError>> Rec_Lean_Dispatch_Single()
-        => _recLeanNoOp.Dispatch(_recSingleEvent);
+    [Benchmark(Description = "Lean Dispatch (record-based, zero-alloc)", OperationsPerInvoke = 10_000)]
+    public async ValueTask<Result<Unit, PipelineError>> Rec_Lean_Dispatch_Single()
+    {
+        Result<Unit, PipelineError> result = default;
+        for (var i = 0; i < 10_000; i++)
+            result = await _recLeanNoOp.Dispatch(_recSingleEvent);
+        return result;
+    }
 
     [Benchmark(Description = "Lean Dispatch with feedback (record-based)")]
     public ValueTask<Result<Unit, PipelineError>> Rec_Lean_Dispatch_WithFeedback()
