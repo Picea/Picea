@@ -199,9 +199,18 @@ public class PiceaBenchmarks
 
     // ── Lean benchmarks (threadSafe=false, trackEvents=false) ────────
 
-    [Benchmark(Description = "Lean Dispatch (no-op, unserialized, no tracking)")]
-    public ValueTask<Result<Unit, PipelineError>> Lean_Dispatch_Single()
-        => _leanNoOp.Dispatch(_singleEvent);
+    // [OperationsPerInvoke] is required here for the same reason as the other
+    // tiny hot-path benchmarks above: one dispatch is far below MinIterationTime,
+    // so CI timer granularity can dominate the measurement and create false
+    // regressions against the 5% threshold.
+    [Benchmark(Description = "Lean Dispatch (no-op, unserialized, no tracking)", OperationsPerInvoke = 10_000)]
+    public async ValueTask<Result<Unit, PipelineError>> Lean_Dispatch_Single()
+    {
+        Result<Unit, PipelineError> result = default;
+        for (var i = 0; i < 10_000; i++)
+            result = await _leanNoOp.Dispatch(_singleEvent);
+        return result;
+    }
 
     [Benchmark(Description = "Lean Dispatch with feedback (unserialized, no tracking)")]
     public ValueTask<Result<Unit, PipelineError>> Lean_Dispatch_WithFeedback()
