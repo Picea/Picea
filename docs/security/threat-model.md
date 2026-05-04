@@ -130,6 +130,8 @@ Picea is a .NET library for deterministic state machines (automata/deciders), wi
 ## 6. Monitoring And Response
 
 - CI failures in security jobs are treated as release/merge blockers for critical and high vulnerable dependency findings.
+- `.github/workflows/benchmarks.yml` enforces a 5% regression gate on the benchmark suite for performance-sensitive changes. This is an availability/release-quality control, not a direct mitigation for TM-006.
+- `.github/workflows/pr-validation.yml` also enforces repository policy controls such as lint/format verification and TODO hygiene. These improve delivery confidence but are not themselves security mitigations.
 - Runtime/decider tracing (`Picea.Tests/TracingTests.cs`) provides operational signal paths for dispatch/start/handle failures.
 - Reported vulnerabilities follow `SECURITY.md` coordinated disclosure path.
 

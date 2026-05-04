@@ -238,7 +238,7 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
         bool trackEvents = true,
         CancellationToken cancellationToken = default)
     {
-        using var activity = AutomatonDiagnostics.Source.StartActivity("Automaton.Start");
+        using var activity = AutomatonDiagnostics.StartActivity("Automaton.Start");
         activity?.SetTag("automaton.type", _automatonTypeName);
         activity?.SetTag("automaton.state.type", _stateTypeName);
 
@@ -261,7 +261,7 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     /// </returns>
     public ValueTask<Result<Unit, PipelineError>> Dispatch(TEvent @event, CancellationToken cancellationToken = default)
     {
-        var activity = AutomatonDiagnostics.Source.StartActivity("Automaton.Dispatch");
+        var activity = AutomatonDiagnostics.StartActivity("Automaton.Dispatch");
         activity?.SetTag("automaton.type", _automatonTypeName);
         activity?.SetTag("automaton.event.type", @event?.GetType().Name);
 
@@ -428,7 +428,7 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     /// <returns>A task that completes when effect processing finishes.</returns>
     public ValueTask InterpretEffect(TEffect effect, CancellationToken cancellationToken = default)
     {
-        var activity = AutomatonDiagnostics.Source.StartActivity("Automaton.InterpretEffect");
+        var activity = AutomatonDiagnostics.StartActivity("Automaton.InterpretEffect");
         activity?.SetTag("automaton.type", _automatonTypeName);
         activity?.SetTag("automaton.effect.type", effect?.GetType().Name);
 

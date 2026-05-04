@@ -6,17 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 via [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning).
 
-## [2.0.0] — Unreleased
+## [1.0.0-rc.5] — Unreleased
 
-### **BREAKING** Changed
+### Changed
 
-- **AutomatonRuntime constructor is now `internal`**: The public constructor of `AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParameters>` is no longer accessible to user code. Users **must** use the static factory method `AutomatonRuntime<...>.Start()` to create and initialize runtimes. This change prevents half-initialized state and enforces proper initialization semantics. Test code and framework extensions (same assembly) retain access via internal visibility. See [migration guide](#migration-automaton-runtime-initialization) below.
+- **AutomatonRuntime construction is now friend-assembly only**: The direct constructor of `AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParameters>` is `internal`. Public consumers **must** use `AutomatonRuntime<...>.Start()` to create and initialize runtimes. Only explicitly declared friend assemblies (`Picea.Tests` and `Picea.Benchmarks`) retain direct-construction access for controlled test/benchmark scenarios. See [migration guide](#migration-guide) below.
 
 - **Internal method parameter ordering**: Reordered internal method signatures to place `CancellationToken` as the final parameter, aligning with .NET Framework Design Guidelines. This affects only internal APIs and is NOT a breaking change for public consumers.
 
+### Fixed
+
+- **Dispatch tracing hot path**: Runtime and decider tracing now skip `Activity` creation entirely when no listener is registered, recovering the dispatch benchmark regression introduced by always entering the tracing setup path on hot calls.
+- **Runtime initialization docs**: Corrected guidance that implied arbitrary consumer test projects could access the internal `AutomatonRuntime` constructor. Only friend assemblies declared through `InternalsVisibleTo` can do that.
+- **Security documentation**: Updated threat-model CI control references to match the workflows actually enforced in this repository, including the current secrets-scan implementation and the benchmark/validation gates that complement the security jobs.
+
 #### Migration Guide
 
-**Before 2.0.0** (calling constructor directly):
+**Before 1.0.0-rc.5** (calling constructor directly):
 ```csharp
 var runtime = new AutomatonRuntime<MyAutomaton, MyState, MyEvent, MyEffect, MyParams>(
     initialState: myState,
@@ -24,7 +30,7 @@ var runtime = new AutomatonRuntime<MyAutomaton, MyState, MyEvent, MyEffect, MyPa
     interpreter: myInterpreter);
 ```
 
-**After 2.0.0** (use `.Start()` factory):
+**After 1.0.0-rc.5** (use `.Start()` factory):
 ```csharp
 var runtime = await AutomatonRuntime<MyAutomaton, MyState, MyEvent, MyEffect, MyParams>
     .Start(

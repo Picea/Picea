@@ -101,7 +101,7 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
         bool trackEvents = true,
         CancellationToken cancellationToken = default)
     {
-        using var activity = AutomatonDiagnostics.Source.StartActivity("Automaton.Decider.Start");
+        using var activity = AutomatonDiagnostics.StartActivity("Automaton.Decider.Start");
         activity?.SetTag("automaton.type", _deciderTypeName);
         activity?.SetTag("automaton.state.type", _stateTypeName);
 
@@ -122,7 +122,7 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
     /// </returns>
     public ValueTask<Result<TState, TError>> Handle(TCommand command, CancellationToken cancellationToken = default)
     {
-        var activity = AutomatonDiagnostics.Source.StartActivity("Automaton.Decider.Handle");
+        var activity = AutomatonDiagnostics.StartActivity("Automaton.Decider.Handle");
         activity?.SetTag("automaton.type", _deciderTypeName);
         activity?.SetTag("automaton.command.type", command?.GetType().Name);
 

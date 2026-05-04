@@ -55,7 +55,7 @@ The following risks are explicitly tracked as not currently covered by an automa
 
 ### Secret leakage into git history/repository
 
-- Current Guardrail: Automated secrets scanning in `.github/workflows/secrets-scan.yml` (`gitleaks` job) plus policy and review discipline via `SECURITY.md` and PR review
+- Current Guardrail: Automated secrets scanning in `.github/workflows/secrets-scan.yml` (`gitleaks` job using `gitleaks/gitleaks-action@v2`) plus policy and review discipline via `SECURITY.md` and PR review
 - Why It Is Not Fully Covered: Pattern/signature-based scanners can miss novel formats or obfuscated secrets; periodic ruleset tuning is still required
 
 ## Maintenance Contract
@@ -64,3 +64,8 @@ The following risks are explicitly tracked as not currently covered by an automa
 2. New regression tests must reference the threat ID in test name or nearby comments where practical.
 3. If a threat is accepted without automated regression coverage, it must appear in "Gaps And Explicit Non-Coverage" with concrete rationale.
 4. CI policy checks are treated as regression coverage only when they are enforced in repository workflows.
+
+## Additional CI Controls
+
+- `.github/workflows/benchmarks.yml` enforces a 5% benchmark regression threshold for performance-sensitive changes. This is tracked as an availability/release-quality guard, not as direct security coverage for TM-006.
+- `.github/workflows/pr-validation.yml` also enforces lint/format, PR metadata, and TODO hygiene checks. These are repository quality controls and are intentionally not counted as security regression evidence unless they directly mitigate a named threat.

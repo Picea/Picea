@@ -98,9 +98,9 @@ var runtime = await AutomatonRuntime<MyAutomaton, MyState, MyEvent, MyEffect, My
         interpreter);
 ```
 
-### Advanced: Custom Initialization Flow (Test Code Only)
+### Advanced: Custom Initialization Flow (Friend Assembly Only)
 
-If you need precise control over initialization order (e.g., rendering before effects), this pattern is restricted to **test code within the same assembly**:
+If you need precise control over initialization order (e.g., rendering before effects), this pattern is restricted to **friend assemblies explicitly granted `InternalsVisibleTo` access**:
 
 ```csharp
 // Step 1: Initialize manually
@@ -117,7 +117,7 @@ var runtime = new AutomatonRuntime<MyAutomaton, MyState, MyEvent, MyEffect, MyPa
 await runtime.InterpretEffect(initialEffect);
 ```
 
-> The direct constructor is `internal` to ensure production code always uses the safe `Start()` factory. Test assemblies can access it — public user code cannot.
+> The direct constructor is `internal` to ensure production code always uses the safe `Start()` factory. In this repository, only `Picea.Tests` and `Picea.Benchmarks` are granted friend access. Arbitrary consumer test projects cannot call it.
 
 ## Hydration (Event Replay)
 

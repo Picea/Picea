@@ -167,7 +167,7 @@ public sealed class GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TVal
         bool trackEvents = true,
         CancellationToken cancellationToken = default)
     {
-        using var activity = AutomatonDiagnostics.Source.StartActivity("Automaton.GuardedDecider.Start");
+        using var activity = AutomatonDiagnostics.StartActivity("Automaton.GuardedDecider.Start");
         activity?.SetTag("automaton.type", _deciderTypeName);
 
         var core = await AutomatonRuntime<TGuardedDecider, TState, TEvent, TEffect, TParameters>
@@ -193,7 +193,7 @@ public sealed class GuardedDecidingRuntime<TGuardedDecider, TGuardedPolicy, TVal
         TCommand command,
         CancellationToken cancellationToken = default)
     {
-        var activity = AutomatonDiagnostics.Source.StartActivity("Automaton.GuardedDecider.Handle");
+        var activity = AutomatonDiagnostics.StartActivity("Automaton.GuardedDecider.Handle");
         activity?.SetTag("automaton.type", _deciderTypeName);
 
         if (_core.IsThreadSafe)

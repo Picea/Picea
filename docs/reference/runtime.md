@@ -97,7 +97,7 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     where TAutomaton : Automaton<TState, TEvent, TEffect, TParameters>
 ```
 
-> ⚠️ **Constructor is `internal`** — Use [`Start`](#start) to create a runtime. The factory ensures proper initialization.
+> ⚠️ **Constructor is `internal`** — Use [`Start`](#start) to create a runtime. The factory ensures proper initialization. Only friend assemblies declared via `InternalsVisibleTo` may construct directly; ordinary consumer applications and test projects cannot.
 
 ### Properties
 
@@ -125,7 +125,7 @@ The **only public way** to create a runtime. This factory:
 3. Interprets the startup effect through the interpreter pipeline
 4. Returns a fully initialized, ready-to-dispatch runtime
 
-**Always use `Start` for production code.** Only test/internal code may construct directly.
+**Always use `Start` for production code.** Only internal code and explicitly declared friend assemblies may construct directly.
 
 ### Dispatch
 
