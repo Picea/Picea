@@ -34,7 +34,7 @@ var runtime = new AutomatonRuntime<MyAutomaton, MyState, MyEvent, MyEffect, MyPa
 ```csharp
 var runtime = await AutomatonRuntime<MyAutomaton, MyState, MyEvent, MyEffect, MyParams>
     .Start(
-        parameters: myParams,        // Passes through AutomatonInitialize
+        parameters: myParams,        // Passes through TAutomaton.Initialize(parameters)
         observer: myObserver,
         interpreter: myInterpreter);
 ```

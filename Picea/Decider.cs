@@ -176,31 +176,24 @@ public sealed class DecidingRuntime<TDecider, TState, TCommand, TEvent, TEffect,
         TEvent[] events,
         CancellationToken cancellationToken)
     {
-        try
+        for (var i = 0; i < events.Length; i++)
         {
-            for (var i = 0; i < events.Length; i++)
+            var dispatchTask = _core.DispatchUnlocked(events[i], 0, cancellationToken);
+            if (!dispatchTask.IsCompletedSuccessfully)
+                return AwaitRemainingEventsAndReturnOkUnserializedWithoutTracing(dispatchTask, events, i + 1, cancellationToken);
+
+            var dispatchResult = dispatchTask.Result;
+            if (dispatchResult.IsErr)
             {
-                var dispatchTask = _core.DispatchUnlocked(events[i], 0, cancellationToken);
-                if (!dispatchTask.IsCompletedSuccessfully)
-                    return AwaitRemainingEventsAndReturnOkUnserializedWithoutTracing(dispatchTask, events, i + 1, cancellationToken);
-
-                var dispatchResult = dispatchTask.Result;
-                if (dispatchResult.IsErr)
-                {
-                    dispatchResult.TryGetError(out var dispatchError);
-                    throw new InvalidOperationException(
-                        $"Pipeline error during dispatch: {dispatchError}",
-                        dispatchError.Exception);
-                }
+                dispatchResult.TryGetError(out var dispatchError);
+                throw new InvalidOperationException(
+                    $"Pipeline error during dispatch: {dispatchError}",
+                    dispatchError.Exception);
             }
+        }
 
-            return new ValueTask<Result<TState, TError>>(
-                Result<TState, TError>.Ok(_core.State));
-        }
-        catch
-        {
-            throw;
-        }
+        return new ValueTask<Result<TState, TError>>(
+            Result<TState, TError>.Ok(_core.State));
     }
 
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]

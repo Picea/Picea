@@ -295,17 +295,8 @@ public sealed class AutomatonRuntime<TAutomaton, TState, TEvent, TEffect, TParam
     }
 
     private ValueTask<Result<Unit, PipelineError>> DispatchUnserializedWithoutTracing(
-        TEvent @event, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return DispatchCore(@event, 0, cancellationToken);
-        }
-        catch
-        {
-            throw;
-        }
-    }
+        TEvent @event, CancellationToken cancellationToken) =>
+        DispatchCore(@event, 0, cancellationToken);
 
     private ValueTask<Result<Unit, PipelineError>> DispatchAfterGateWithoutTracing(
         TEvent @event, CancellationToken cancellationToken)

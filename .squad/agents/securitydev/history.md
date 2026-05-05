@@ -8,11 +8,11 @@ Project-specific security learnings, tool evaluations, vulnerability patterns, a
 |---|---|---|---|
 | SAST | Roslyn Analyzers | Not yet configured | |
 | SAST | Semgrep | Not yet configured | |
-| SCA | dotnet vuln scan | Not yet configured | |
+| SCA | dotnet vuln scan | Configured (CI — `dotnet list package --vulnerable`) | 2026-05 |
 | SCA | Dependabot | Not yet configured | |
-| Secrets | Gitleaks | Not yet configured | |
-| DAST | OWASP ZAP | Not yet configured | |
-| Container | Trivy | Not yet configured | |
+| Secrets | Gitleaks | Configured (CI — PR + push scan via `secrets-scan.yml`) | 2026-05 |
+| DAST | OWASP ZAP | N/A — no HTTP surface; DAST coverage guard enforces this | 2026-05 |
+| Container | Trivy | Guard present (`container-scan-guard.yml`) — full scan required if container artifacts detected | 2026-05 |
 
 ## Vulnerability Patterns Found
 *None yet — recurring vulnerability classes tracked here.*

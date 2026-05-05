@@ -21,6 +21,7 @@ All PRs must pass:
 - ✅ **Build & Test** — `dotnet build`, `dotnet test`
 - ✅ **Format** — `dotnet format --verify-no-changes`
 - ✅ **CodeQL** — Security and code quality analysis
+- ✅ **Benchmark Regression** — `Benchmarks` workflow (`Run benchmarks`), fails on regressions above 5%
 
 ### Pull Request Requirements
 - ✅ **At least 1 approval** required

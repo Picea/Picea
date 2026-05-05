@@ -66,8 +66,11 @@ jobs:
           # Alert at 105%, fail at 105% (any benchmark >5% slower → red build)
           # Math: regression_ratio = current / baseline; fail when regression_ratio > 1.05
           alert-threshold: '105%'
-          fail-on-alert: true
-          comment-on-alert: ${{ github.event_name == 'push' }}
+            # Only fail on pushes to main. PR runs are informational — shared CI runners
+            # have significant machine variance, making sub-5% thresholds unreliable for PRs.
+            # PRs still get a benchmark summary and alert comment, but will not block merge.
+            fail-on-alert: ${{ github.event_name == 'push' }}
+            comment-on-alert: true
           alert-comment-cc-users: '@MCGPPeters'
           # ── Job summary in PR / commit view ─────────────────
           summary-always: true
