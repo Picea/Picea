@@ -57,6 +57,19 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "📦 Package version: $VERSION"
 
+      - name: Verify tag matches package version
+        run: |
+          EXPECTED_TAG="v${{ steps.version.outputs.VERSION }}"
+
+          if [ "${GITHUB_REF_NAME}" != "$EXPECTED_TAG" ]; then
+            echo "❌ Release tag/version mismatch"
+            echo "Tag: ${GITHUB_REF_NAME}"
+            echo "Computed package version: ${{ steps.version.outputs.VERSION }}"
+            echo "Expected tag: $EXPECTED_TAG"
+            echo "Update version.json and retag so tag and package version match exactly."
+            exit 1
+          fi
+
       - name: Restore dependencies
         run: dotnet restore
 
@@ -83,5 +96,17 @@ jobs:
           dotnet pack ./Picea/Picea.csproj --configuration Release --output ./nupkg
           dotnet pack ./Picea.Templates/Picea.Templates.csproj --configuration Release --output ./nupkg
 
-      - name: Publish to NuGet
-        run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+      - name: Publish Picea.Templates to NuGet
+        env:
+          NUGET_FALLBACK_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_TEMPLATES_API_KEY: ${{ secrets.NUGET_TEMPLATES_API_KEY }}
+        run: |
+          API_KEY="$NUGET_TEMPLATES_API_KEY"
+          if [ -z "$API_KEY" ]; then
+            API_KEY="$NUGET_FALLBACK_API_KEY"
+          fi
+
+          dotnet nuget push ./nupkg/Picea.Templates.*.nupkg --api-key "$API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: Publish Picea to NuGet
+        run: dotnet nuget push ./nupkg/Picea.*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
