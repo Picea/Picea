@@ -109,4 +109,6 @@ jobs:
           dotnet nuget push ./nupkg/Picea.Templates.*.nupkg --api-key "$API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
 
       - name: Publish Picea to NuGet
-        run: dotnet nuget push "./nupkg/Picea.[0-9]*.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: |
+          PKG=$(find ./nupkg -maxdepth 1 -name "Picea.*.nupkg" ! -name "Picea.Templates.*" | head -1)
+          dotnet nuget push "$PKG" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
