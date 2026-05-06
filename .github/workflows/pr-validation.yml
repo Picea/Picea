@@ -42,7 +42,7 @@ jobs:
 
     steps:
       - name: Check PR description
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const prBody = context.payload.pull_request.body || '';
@@ -76,7 +76,7 @@ jobs:
 
     steps:
       - name: Check PR size
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const pr = context.payload.pull_request;
